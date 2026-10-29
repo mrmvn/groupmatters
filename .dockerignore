@@ -1,0 +1,7 @@
+node_modules
+.npm-cache
+data
+test
+*.sqlite*
+.git
+.DS_Store
