@@ -1,0 +1,22 @@
+{
+  "name": "ourquestions",
+  "version": "0.1.0",
+  "description": "Question register: a process-agnostic register of questions a group needs to answer collectively.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "dev": "node --watch src/main.ts",
+    "cli": "node src/cli.ts",
+    "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "linkedom": "^0.18.14",
+    "typescript": "^5.9.3"
+  }
+}

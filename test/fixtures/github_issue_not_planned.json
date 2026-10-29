@@ -1,0 +1,102 @@
+{
+  "url": "https://api.github.com/repos/nodejs/node/issues/66924",
+  "repository_url": "https://api.github.com/repos/nodejs/node",
+  "labels_url": "https://api.github.com/repos/nodejs/node/issues/66924/labels{/name}",
+  "comments_url": "https://api.github.com/repos/nodejs/node/issues/66924/comments",
+  "events_url": "https://api.github.com/repos/nodejs/node/issues/66924/events",
+  "html_url": "https://github.com/nodejs/node/issues/66924",
+  "id": 5977973824,
+  "node_id": "I_kwDOAZ7xs88AAAABZFCkQA",
+  "number": 66924,
+  "title": "http: chunked ServerResponse never emits 'drain' and stalls after ~64 KiB when written strings contain non-ASCII (regression in v24.22.0 / v26.9.0)",
+  "user": {
+    "login": "imrihe-ledge",
+    "id": 173601835,
+    "node_id": "U_kgDOClj0Kw",
+    "avatar_url": "https://avatars.githubusercontent.com/u/173601835?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/imrihe-ledge",
+    "html_url": "https://github.com/imrihe-ledge",
+    "followers_url": "https://api.github.com/users/imrihe-ledge/followers",
+    "following_url": "https://api.github.com/users/imrihe-ledge/following{/other_user}",
+    "gists_url": "https://api.github.com/users/imrihe-ledge/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/imrihe-ledge/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/imrihe-ledge/subscriptions",
+    "organizations_url": "https://api.github.com/users/imrihe-ledge/orgs",
+    "repos_url": "https://api.github.com/users/imrihe-ledge/repos",
+    "events_url": "https://api.github.com/users/imrihe-ledge/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/imrihe-ledge/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "labels": [
+
+  ],
+  "state": "closed",
+  "locked": false,
+  "assignees": [
+
+  ],
+  "milestone": null,
+  "comments": 1,
+  "created_at": "2026-10-22T10:57:15Z",
+  "updated_at": "2026-10-22T11:00:10Z",
+  "closed_at": "2026-10-22T11:00:10Z",
+  "assignee": null,
+  "author_association": "NONE",
+  "issue_field_values": [
+
+  ],
+  "type": null,
+  "active_lock_reason": null,
+  "sub_issues_summary": {
+    "total": 0,
+    "completed": 0,
+    "percent_completed": 0
+  },
+  "issue_dependencies_summary": {
+    "blocked_by": 0,
+    "total_blocked_by": 0,
+    "blocking": 0,
+    "total_blocking": 0
+  },
+  "body": "### Version\n\nv24.22.0, v24.22.1, v26.9.0 – v26.12.1 (regression; last good: v24.21.0, v26.8.2, v25.9.0, v22.23.4)\n\n### Platform\n\nLinux (official `node:*-alpine` Docker images, linux/amd64). Also seen in production on the same images.\n\n### Subsystem\n\nhttp\n\n### What steps will reproduce the bug?\n\nA chunked `http.ServerResponse` stops sending data and never emits `'drain'` after the first backpressure cycle when the written strings contain non-ASCII characters. ASCII-only data is fine.\n\n```js\nimport http from 'node:http';\n\nconst nonAscii = process.argv[2]; // try \"x\" (works) and \"—\" (hangs)\n\nconst server = http.createServer(async (req, res) => {\n  let writes = 0;\n  let drainWaits = 0;\n  const watchdog = setTimeout(() => {\n    console.log(process.version, `char=${JSON.stringify(nonAscii)}`,\n      `STUCK: writes=${writes} drainWaits=${drainWaits}`,\n      `writableLength=${res.writableLength} hwm=${res.writableHighWaterMark}`,\n      `corked=${res.writableCorked} socketWritableLength=${res.socket.writableLength}`);\n    process.exit(1);\n  }, 2500);\n\n  for (let i = 0; i < 4000; i++) {\n    const pieces = [(i ? ',' : '') + '{\"id\":\"row_' + i + '\",\"note\":\"Accrued payroll ', nonAscii, ' March\",\"amount\":' + i * 1.5 + '}'];\n    for (const piece of pieces) {\n      writes++;\n      if (!res.write(piece)) {\n        drainWaits++;\n        await new Promise((resolve) => res.once('drain', resolve));\n      }\n    }\n  }\n  clearTimeout(watchdog);\n  res.end();\n  console.log(process.version, `char=${JSON.stringify(nonAscii)}`, `DONE writes=${writes} drainWaits=${drainWaits}`);\n});\n\nserver.listen(0, '127.0.0.1', () => {\n  http.request({ port: server.address().port, host: '127.0.0.1', method: 'POST' }, (res) => {\n    res.resume();\n    res.on('end', () => process.exit(0));\n  }).end();\n});\n```\n\n```\ndocker run --rm -v \"$PWD\":/src:ro node:24.22.1-alpine node /src/repro.mjs x\ndocker run --rm -v \"$PWD\":/src:ro node:24.22.1-alpine node /src/repro.mjs —\n```\n\n### How often does it reproduce? Is there a required condition?\n\n100% in repeated runs. Required: chunked response (no `Content-Length`, the default for streamed writes), more than ~64 KiB written in total, and at least one non-ASCII string chunk (`—`, `é`, `😀` all trigger it). Using `Readable.from(...).pipe(res)` instead of the manual `write`/`drain` loop hangs the same way. An all-ASCII body of the same size completes.\n\n### What is the expected behavior? Why is that the expected behavior?\n\nThe response completes (270,150 bytes in this repro), as it does on v24.21.0, v22.23.4, v25.9.0 and v26.8.2. When `res.write()` returns `false`, `'drain'` should be emitted once the buffered data has been flushed.\n\n### What do you see instead?\n\n```\nv24.21.0 char=\"x\" DONE writes=12000 drainWaits=5\nv24.21.0 char=\"—\" DONE writes=12000 drainWaits=5\nv24.22.1 char=\"x\" DONE writes=12000 drainWaits=4\nv24.22.1 char=\"—\" STUCK: writes=2967 drainWaits=1 writableLength=0 hwm=65536 corked=0 socketWritableLength=0\n```\n\nAfter the first `write()` that returns `false`, `'drain'` is never emitted, even though `res.writableLength` is 0, the socket's `writableLength` is 0 and nothing is corked. The server simply stops. Inspecting the raw socket, the bytes already sent are valid chunked framing (one complete ~64 KiB chunk), and no further data is written, so the client waits until its own timeout. With ASCII-only data the writes are coalesced into larger chunks and the response completes.\n\nSame test with a plain-`pipe` variant (`Readable.from(strings).pipe(res)`, 4000 rows, 270 KB), one run per version, plus repeated runs on 24.22.x and 26.12.x:\n\n| Node | ASCII `x` | non-ASCII `—`, `é`, `😀` |\n|---|---|---|\n| 22.23.4 | OK | OK |\n| 24.21.0 | OK | OK |\n| 24.22.0 | OK | **stalls after ~65 KB** |\n| 24.22.1 | OK | **stalls after ~65 KB** |\n| 25.9.0 | OK | OK |\n| 26.7.0, 26.8.2 | OK | OK |\n| 26.9.0, 26.10.0, 26.11.1, 26.12.0, 26.12.1 | OK | **stalls after ~65 KB** |\n\n### Additional information\n\nNot bisected. Possibly related: the chunked-write coalescing rework in `lib/_http_outgoing.js` (nodejs/node#64987, \"http: coalesce chunked writes during auto-corking\"), which is listed in the v24.22.0 changelog. I only know the regression window from the version table above.\n\nWe found this in production when a streamed JSON endpoint (`stream-json` piped into `res`) stopped completing after our base image moved from 24.21.0 to 24.22.0. Our endpoint returned an 844 KB body that included `—`, `–` and `’`. Replacing those three characters with `?` made it complete, and so did pinning to `node:24.21.0`. Rolling back the JSON stream library to an older major also made it complete on 24.22.0; we have not investigated why that changes the write pattern. The security releases from Oct 21 (22.23.4, 24.22.1, 26.12.1) do not change the behaviour.\n",
+  "closed_by": {
+    "login": "imrihe-ledge",
+    "id": 173601835,
+    "node_id": "U_kgDOClj0Kw",
+    "avatar_url": "https://avatars.githubusercontent.com/u/173601835?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/imrihe-ledge",
+    "html_url": "https://github.com/imrihe-ledge",
+    "followers_url": "https://api.github.com/users/imrihe-ledge/followers",
+    "following_url": "https://api.github.com/users/imrihe-ledge/following{/other_user}",
+    "gists_url": "https://api.github.com/users/imrihe-ledge/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/imrihe-ledge/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/imrihe-ledge/subscriptions",
+    "organizations_url": "https://api.github.com/users/imrihe-ledge/orgs",
+    "repos_url": "https://api.github.com/users/imrihe-ledge/repos",
+    "events_url": "https://api.github.com/users/imrihe-ledge/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/imrihe-ledge/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "reactions": {
+    "url": "https://api.github.com/repos/nodejs/node/issues/66924/reactions",
+    "total_count": 0,
+    "+1": 0,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "timeline_url": "https://api.github.com/repos/nodejs/node/issues/66924/timeline",
+  "performed_via_github_app": null,
+  "state_reason": "not_planned",
+  "pinned_comment": null
+}
