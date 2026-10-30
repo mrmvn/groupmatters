@@ -1,12 +1,12 @@
 // Reusable UI pieces: status pills, process chips, question cards, activity lines.
-import { h, time, timeAgo } from "./dom.js";
+import { h, time, timeAgo, fmtWhen } from "./dom.js";
 import { STATE, STATE_ICON, STATE_HINT, QUESTION_STATES, itemLabel, ACTION, OLD_STATUS, CUSTOM_TOOL_ID } from "./labels.js";
 
 /** A question's status: category colour and icon, with the hand-set label when there is one. */
 export const statusPill = (state, label) =>
   h("span", { class: `pill st-${state}`, title: label && label !== STATE[state] ? `${STATE[state]}: ${STATE_HINT[state]}` : STATE_HINT[state] }, h("span", { "aria-hidden": "true" }, STATE_ICON[state] ?? "", " "), label ?? STATE[state] ?? state);
 
-export const questionPill = (q) => statusPill(q.status, q.status_source === "manual" ? q.status_label : undefined);
+export const questionPill = (q) => statusPill(q.status, q.status_label);
 
 /** A process state: the platform's own wording when known, coloured by category. */
 export const statePill = (state, raw) => h("span", { class: `pill ps-${state}`, title: raw && STATE[state] ? STATE[state] : undefined }, raw ?? STATE[state] ?? state);
@@ -16,23 +16,28 @@ export function toolName(tools, id) {
   return tools.find((t) => t.id === id)?.name ?? id;
 }
 
-/** "Loomio · poll" or, for custom processes, just their kind ("General assembly"). */
-export const processKind = (p, tools) => (p.tool_id === CUSTOM_TOOL_ID ? p.item_type : `${toolName(tools, p.tool_id)} · ${itemLabel(p.item_type)}`);
+/** "Loomio · poll"; for processes not on the tool list, just their kind ("General assembly"). */
+export function processKind(q, tools) {
+  const p = q.process;
+  const kind = q.fields?.kind?.value ?? p.item_type;
+  if (p.tool_id === CUSTOM_TOOL_ID) return kind ? itemLabel(kind) : p.url ? new URL(p.url).hostname.replace(/^www\./, "") : "Process";
+  return kind ? `${toolName(tools, p.tool_id)} · ${itemLabel(kind)}` : toolName(tools, p.tool_id);
+}
 
-/** Compact chip: tool · item type · state · key extra value */
-export function processChip(process, tools) {
+/** Compact chip: tool · kind · the platform's word for its state · key extra value */
+export function processChip(q, tools) {
+  const process = q.process;
   if (!process) return null;
   const f = process.fetched;
   const extra = f?.extra ?? {};
   const key = ["participants", "votes", "forecasters", "comments"].find((k) => extra[k] !== undefined);
-  const hasState = f && f.state !== "unknown";
+  const hasState = process.fetch_mode === "auto" && f && f.state !== "unknown";
   return h(
     "span",
     { class: "chip" },
-    h("span", { class: "chip-tool" }, processKind(process, tools)),
+    h("span", { class: "chip-tool" }, processKind(q, tools)),
     process.url ? h("a", { href: process.url, target: "_blank", rel: "noopener noreferrer", class: "chip-ext", title: `Open on ${process.tool_id === CUSTOM_TOOL_ID ? new URL(process.url).hostname : toolName(tools, process.tool_id)}`, "aria-label": "Open the process (new tab)" }, "↗") : null,
-    " · ",
-    hasState ? statePill(f.state, f.raw_state) : h("span", { class: "muted" }, "state not set"),
+    hasState ? [" · ", statePill(f.state, f.raw_state)] : null,
     key ? h("span", { class: "muted" }, ` · ${extra[key]} ${key.replace(/_/g, " ")}`) : null,
     f?.fetch_error ? h("span", { class: "warn", title: f.fetch_error }, " ⚠") : null,
   );
@@ -49,13 +54,13 @@ export function questionCard(q, ctx) {
     h(
       "div",
       { class: "card-meta" },
-      processChip(q.process, tools),
-      q.process?.fetched?.outcome_summary ? h("span", { class: "muted" }, q.process.fetched.outcome_summary) : null,
+      processChip(q, tools),
+      q.fields?.summary?.value ? h("span", { class: "muted" }, q.fields.summary.value) : null,
     ),
     h(
       "div",
       { class: "card-criteria" },
-      q.process ? (q.status_source === "process" ? "Status follows the process" : "Status set by hand") : "No process",
+      q.process ? (q.fields?.status?.source === "retrieved" ? "Status retrieved" : "Status typed") : "No process",
       " · ",
       platformAt ? ["last activity on the platform ", time(platformAt, timeAgo(platformAt))] : ["last change ", time(q.last_activity_at, timeAgo(q.last_activity_at))],
     ),
@@ -74,7 +79,7 @@ export function activityItem(e, titles) {
         st(d.from),
         " → ",
         d.label ?? st(d.to),
-        d.source === "process" ? " (follows the process)" : d.source === "manual" ? " (set by hand)" : "",
+        d.source === "process" || d.source === "retrieved" ? " (retrieved)" : d.source === "manual" || d.source === "typed" ? " (typed)" : "",
         d.reason ? ` (${d.reason})` : "",
         d.note ? ` — “${d.note}”` : "",
       ];
@@ -107,8 +112,25 @@ export function activityItem(e, titles) {
       detail = d.reason;
       break;
     case "question.edited":
-      detail = Object.keys(d).map((k) => k.replace(/_/g, " ")).join(", ");
+      detail = d.source === "retrieved" ? `title → “${d.title?.after}” (retrieved)` : Object.keys(d).map((k) => k.replace(/_/g, " ")).join(", ");
       break;
+    case "question.fields_changed": {
+      const one = (f, x) =>
+        x?.source !== "typed"
+          ? "back to retrieved"
+          : `${x.value === null ? "none" : f === "status" ? (x.value.label ?? STATE[x.value.state]) : f === "start" || f === "end" ? fmtWhen(x.value) : f === "kind" ? itemLabel(x.value) : `“${x.value}”`} (typed)`;
+      const name = (f) => (f === "results_url" ? "results" : f);
+      detail = [Object.entries(d.fields ?? {}).map(([f, c]) => `${name(f)} → ${one(f, c.after)}`).join(" · "), d.note ? ` — “${d.note}”` : ""];
+      break;
+    }
+    case "process.tool_matched":
+      detail = d.url;
+      break;
+    case "question.dates_changed": {
+      const one = (x) => (x?.source === "manual" ? fmtWhen(x.date) : x?.source === "none" ? "none" : "from the link");
+      detail = ["start", "end"].filter((k) => JSON.stringify(d.before?.[k]) !== JSON.stringify(d.after?.[k])).map((k) => `${k}: ${one(d.after?.[k])}`).join(" · ");
+      break;
+    }
     case "tool.added":
       detail = d.tool?.name;
       break;

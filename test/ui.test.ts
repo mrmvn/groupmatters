@@ -7,10 +7,12 @@ import { fixture, makeCtx } from "./helpers.ts";
 import { route } from "../src/http/server.ts";
 import { seedDemo } from "../src/demo.ts";
 import * as repo from "../src/repo.ts";
+import { effectiveDates } from "../src/fields.ts";
 
 const t = makeCtx({
   "https://api.github.com/repos/nodejs/node/pulls/50000": { body: fixture("github_pr_merged.json") },
   "https://www.loomio.com/api/v1/polls/irvWwUHt": { body: fixture("loomio_poll_closed.json") },
+  "https://api.github.com/repos/nodejs/node/pulls/50001": { body: fixture("github_pr_open.json") },
 });
 const demo = await seedDemo(t.ctx);
 const token = demo.editToken;
@@ -126,51 +128,168 @@ test("flow: type a question in the composer and add it", async () => {
   assert.match(document.querySelector("main")!.textContent!, /Should we rotate facilitation monthly\?/);
 });
 
-test("flow: set the status by hand, then follow the process again", async () => {
-  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.process?.tool_id === "github")!;
-  assert.equal(q.status, "accepted");
-  await go(`#/q/${q.id}`);
-  buttons("Set by hand instead")[0].dispatchEvent(new window.Event("click"));
-  await sleep(50);
-  const form = document.querySelector(".inline-form") as any;
-  choose(form.querySelector("select"), "Being discussed");
+/** Double-click a field's value and return its inline editor. */
+async function editField(name: string) {
+  const v = document.querySelector(`.field-${name} .field-value, .field-${name} h1`) as any;
+  v.dispatchEvent(new window.Event("dblclick"));
+  await sleep(30);
+  return document.querySelector(`.field-${name} .field-editor`) as any;
+}
+async function submitAndSettle(form: any) {
   form.dispatchEvent(new window.Event("submit", { cancelable: true }));
   await sleep(200);
   await settle();
+  return document.querySelector("main")!;
+}
+
+test("fields: a retrieved status says so (with the platform's word); double-click types it; ↺ use retrieved goes back", async () => {
+  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.process?.tool_id === "github")!;
+  assert.equal(q.status, "accepted");
+  let main = await go(`#/q/${q.id}`);
+  assert.match(main.querySelector(".field-status")!.textContent!, /retrieved as “merged”/);
+  assert.match(main.querySelector(".field-kind")!.textContent!, /pull request\s*retrieved/);
+  const form = await editField("status");
+  choose(form.querySelector("select"), "Being discussed");
+  main = await submitAndSettle(form);
   let r = repo.getQuestion(t.ctx.db, demo.space.id, q.id)!;
-  assert.deepEqual([r.status, r.status_source, r.status_label], ["open", "manual", "Being discussed"]);
-  buttons("Follow the process")[0].dispatchEvent(new window.Event("click"));
+  assert.deepEqual([r.status, r.status_label, (r.typed.status?.value as any)?.label, r.typed.status?.by], ["open", "Being discussed", "Being discussed", "Ana"]);
+  const cell = main.querySelector(".field-status")!;
+  assert.match(cell.textContent!, /typed/);
+  assert.match(cell.textContent!, /retrieved:\s*✔\s*Accepted/);
+  (([...cell.querySelectorAll("button")] as any[]).find((b) => /use retrieved/.test(b.textContent))).click();
   await sleep(200);
   await settle();
   r = repo.getQuestion(t.ctx.db, demo.space.id, q.id)!;
-  assert.deepEqual([r.status, r.status_source], ["accepted", "process"]);
+  assert.deepEqual([r.status, r.typed.status], ["accepted", undefined]);
 });
 
-test("flow: link a custom process, then update its state", async () => {
+test("flow: link a custom process (a kind, no link), then type its status", async () => {
   const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title.startsWith("Should we move the weekly call"))!;
   await go(`#/q/${q.id}`);
-  buttons("Link a process")[0].dispatchEvent(new window.Event("click"));
+  buttons("Add an attached link")[0].dispatchEvent(new window.Event("click"));
   await sleep(50);
-  let form = document.querySelector(".inline-form") as any;
-  const custom = form.querySelector('input[type=radio][value=custom]');
-  custom.checked = true;
-  custom.dispatchEvent(new window.Event("change"));
-  const kind = [...form.querySelectorAll("input[type=text]")].find((i: any) => i.placeholder.startsWith("e.g. Meeting")) as any;
-  kind.value = "Meeting";
-  form.dispatchEvent(new window.Event("submit", { cancelable: true }));
+  const form = document.querySelector(".inline-form") as any;
+  (form.querySelector('input[list="attach-kinds"]') as any).value = "Meeting";
+  let main = await submitAndSettle(form);
+  let r = repo.getQuestion(t.ctx.db, demo.space.id, q.id)!;
+  assert.deepEqual([r.process?.tool_id, r.typed.kind?.value], ["custom", "Meeting"]);
+  assert.match(main.textContent!, /No link: everything is typed/);
+  assert.match(main.textContent!, /Nothing is retrieved here/);
+  const ed = await editField("status");
+  choose(ed.querySelector("select"), "Agreed");
+  main = await submitAndSettle(ed);
+  assert.equal(repo.getQuestion(t.ctx.db, demo.space.id, q.id)!.status, "accepted");
+  assert.match(main.querySelector(".field-status")!.textContent!, /Agreed\s*typed/);
+});
+
+test("fields: dates typed with ✎ (time optional), cleared with No date", async () => {
+  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title.startsWith("How do newcomers"))!;
+  await go(`#/q/${q.id}`);
+  (document.querySelector('.field-start button[aria-label="Type the start"]') as any).click();
+  await sleep(30);
+  let ed = document.querySelector(".field-start .field-editor") as any;
+  ed.querySelector("input[type=date]").value = "2026-01-04";
+  await submitAndSettle(ed);
+  ed = await editField("end");
+  ed.querySelector("input[type=date]").value = "2026-01-06";
+  ed.querySelector("input[type=time]").value = "17:30";
+  const main = await submitAndSettle(ed);
+  let r = repo.getQuestion(t.ctx.db, demo.space.id, q.id)!;
+  assert.equal(r.typed.start?.value, "2026-01-04", "no time: whole day");
+  assert.equal(r.typed.end?.value, new Date("2026-01-06T17:30").toISOString());
+  assert.match(main.querySelector(".field-start")!.textContent!, /typed/);
+  ed = await editField("end");
+  (([...ed.querySelectorAll("button")] as any[]).find((b) => b.textContent === "No date")).click();
   await sleep(200);
   await settle();
-  assert.equal(repo.getQuestion(t.ctx.db, demo.space.id, q.id)!.process?.item_type, "Meeting");
-  buttons("Update state")[0].dispatchEvent(new window.Event("click"));
-  await sleep(50);
-  form = document.querySelector(".inline-form") as any;
-  choose(form.querySelector("select"), "accepted|Agreed");
-  form.dispatchEvent(new window.Event("submit", { cancelable: true }));
-  await sleep(200);
-  await settle();
-  const r = repo.getQuestion(t.ctx.db, demo.space.id, q.id)!;
-  assert.equal(r.status, "accepted");
-  assert.match(document.querySelector("main")!.textContent!, /Agreed/);
+  r = repo.getQuestion(t.ctx.db, demo.space.id, q.id)!;
+  assert.equal(r.typed.end, undefined, "nothing to retrieve: cleared");
+});
+
+test("flow: a link from a site not on the tool list is accepted, with a typed title", async () => {
+  await go("#/list?lane=current");
+  const input = document.getElementById("composer-input") as any;
+  input.value = "https://forum.example.org/t/should-we-9";
+  input.dispatchEvent(new window.Event("input"));
+  await sleep(500);
+  const panel = document.querySelector(".composer-panel")!;
+  assert.match(panel.textContent!, /isn't on the tool list/);
+  const title = panel.querySelector("input[type=text]") as any;
+  assert.equal(title.required, true);
+  title.value = "Should the forum be moderated?";
+  await submitAndSettle(input.closest("form"));
+  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title === "Should the forum be moderated?")!;
+  assert.deepEqual([q.process?.tool_id, q.process?.url], ["custom", "https://forum.example.org/t/should-we-9"]);
+  assert.ok(document.querySelector('main a[href^="#/rules/add-tool"]'), "offers to add the tool");
+});
+
+test("flow: the composer shows the details fields, for typed text and for links", async () => {
+  await go("#/list?lane=current");
+  const input = document.getElementById("composer-input") as any;
+  input.value = "Which venue for the autumn assembly?";
+  input.dispatchEvent(new window.Event("input"));
+  await sleep(400);
+  const panel = document.querySelector(".composer-panel") as any;
+  const labels = [...panel.querySelectorAll(".create-fields .label")].map((l: any) => l.textContent);
+  assert.deepEqual(labels, ["Kind", "Status", "Summary", "Results", "Start", "End"]);
+  assert.equal(panel.textContent.includes("Why it matters"), false);
+  panel.querySelector('input[aria-label="Kind"]').value = "General assembly";
+  choose(panel.querySelector('select[aria-label="Status"]'), "Being discussed");
+  panel.querySelector('input[aria-label="Summary"]').value = "Venue and date";
+  panel.querySelector('input[aria-label="Results"]').value = "Not decided yet";
+  panel.querySelector('input[aria-label="Start: day"]').value = "2026-10-03";
+  await submitAndSettle(input.closest("form"));
+  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title === "Which venue for the autumn assembly?")!;
+  assert.deepEqual([q.process?.tool_id, q.status, q.status_label], ["custom", "open", "Being discussed"]);
+  assert.deepEqual([q.typed.kind?.value, q.typed.summary?.value, q.typed.results_url?.value, q.typed.start?.value], ["General assembly", "Venue and date", "Not decided yet", "2026-10-03"]);
+  const main = document.querySelector("main")!;
+  assert.match(main.querySelector(".field-results_url")!.textContent!, /Not decided yet/);
+  assert.equal(main.textContent!.includes("null"), false, "no stray null");
+});
+
+test("flow: a link from a listed tool shows what will be retrieved in the details", async () => {
+  await go("#/list?lane=current");
+  const input = document.getElementById("composer-input") as any;
+  input.value = "https://github.com/nodejs/node/pull/50001";
+  input.dispatchEvent(new window.Event("input"));
+  await sleep(500);
+  const panel = document.querySelector(".composer-panel") as any;
+  const details = panel.querySelector(".create-fields");
+  assert.ok(details, "details shown");
+  const val = (sel: string) => details.querySelector(sel).value;
+  assert.match(details.textContent, /retrieved/);
+  assert.equal(val('input[aria-label="Kind"]').toLowerCase(), "pull request");
+  assert.equal(val('select[aria-label="Status"]'), "Being discussed");
+  assert.match(val('input[aria-label="Start: day"]'), /^\d{4}-\d{2}-\d{2}$/, "start pre-filled");
+  // Unchanged pre-filled values aren't typed: they keep following the item. Changing one types it.
+  details.querySelector('input[aria-label="Summary"]').value = "My own summary";
+  await submitAndSettle(input.closest("form"));
+  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.process?.url === "https://github.com/nodejs/node/pull/50001")!;
+  assert.deepEqual(Object.keys(q.typed).sort(), ["summary"]);
+  assert.equal(q.typed.summary?.value, "My own summary");
+});
+
+test("timeline page: only dated questions, bars placed over time, same filters as the list, linked both ways", async () => {
+  const main = await go("#/timeline");
+  assert.ok(document.querySelector('header a[href="#/timeline"].current'), "Timeline tab");
+  const rows = [...main.querySelectorAll(".tl-rows .tl-row")] as any[];
+  const dated = repo.listQuestions(t.ctx.db, demo.space.id).filter((q) => effectiveDates(q).start);
+  assert.equal(rows.length, dated.length, "only questions with a start date");
+  assert.match(main.textContent!, /no start date and (isn't|aren't) shown/);
+  const bar = main.querySelector(".tl-bar") as any;
+  assert.match(bar.style.left, /^\d+(\.\d+)?%$/);
+  assert.match(bar.getAttribute("aria-label"), /(from|starts) .*\((typed|retrieved)\)/);
+
+  assert.ok(main.querySelector(".tl-today"));
+  assert.ok(main.querySelector(".tl-bar.unknown-end"), "t-shirts: ended, end unknown");
+  assert.ok(main.querySelector(".tl-planned"), "a planned end");
+  assert.ok(main.querySelectorAll(".tl-tick").length > 0);
+  const ended = await go("#/timeline?lane=ended");
+  assert.ok(([...ended.querySelectorAll(".tl-bar")] as any[]).every((b) => /st-(accepted|rejected|concluded)/.test(b.className)));
+  assert.ok(ended.querySelector('a[href="#/list?lane=ended"]'), "same filters as a list");
+  const list = await go("#/list?lane=ended");
+  assert.ok(list.querySelector('a[href="#/timeline?lane=ended"]'), "and back");
+  assert.match((await go("#/timeline?q=zzzz-nothing")).textContent!, /No dated questions match/);
 });
 
 test("rules: status labels panel renders and edits", async () => {
@@ -223,14 +342,20 @@ test("flow: pasting an already tracked link shows the existing question", async 
   assert.match(notice.textContent, /already tracked by Should CI use the newer upload-artifact action\?/);
 });
 
-test("flow: remove a question, then restore it from the Rules page", async () => {
+test("flow: a removed question can be restored from the Rules page", async () => {
   const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title.startsWith("Should we print t-shirts"))!;
+  // The question page has no Edit or Remove button: removal is an API action.
+  const page = await go(`#/q/${q.id}`);
+  assert.deepEqual(buttons("Edit").concat(buttons("Remove…")), []);
+  assert.equal(page.textContent!.includes("null"), false);
+  // @ts-ignore (browser module)
+  await (await import("../public/api.js")).api("POST", `questions/${q.id}/remove`, {});
+  // Saving anything in the app reloads the counts.
+  await go(`#/q/${repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title.startsWith("Should meeting notes"))!.id}`);
+  const ed = await editField("summary");
+  ed.querySelector("input").value = "Spanish and French";
+  await submitAndSettle(ed);
   await go(`#/q/${q.id}`);
-  buttons("Remove…")[0].dispatchEvent(new window.Event("click"));
-  await sleep(50);
-  (document.querySelector(".inline-form") as any).dispatchEvent(new window.Event("submit", { cancelable: true }));
-  await sleep(200);
-  await settle();
   assert.ok(repo.getQuestion(t.ctx.db, demo.space.id, q.id)!.removed_at);
   assert.match(document.querySelector("main")!.textContent!, /Removed/);
   const rules = await go("#/rules");
@@ -291,10 +416,10 @@ test("add-tool page offers Consul instances, preselected for Consul-looking link
   assert.equal((main.querySelector('input[placeholder="https://participa.example.org"]') as any).value, "https://decide.example.es");
 });
 
-test("tool edit page shows the state mapping as rows", async () => {
-  await go("#/rules/tool?id=kialo");
-  const rows = [...document.querySelectorAll(".map-row")] as any[];
-  assert.deepEqual(rows.map((r) => [r.querySelector("input").value, r.querySelector("select").value]), [["Open", "open"], ["Closed", "concluded"]]);
+test("tool edit page: patterns and description, no state words", async () => {
+  const main = await go("#/rules/tool?id=kialo");
+  assert.equal(main.querySelectorAll(".map-row").length, 0);
+  assert.match(main.textContent!, /the kind .* and the page title are retrieved/);
 });
 
 test("tool edit page renders for manual tools", async () => {
@@ -322,10 +447,10 @@ test("rules list shows what each tool is for and how much it's used; automatic t
   assert.match(hash, /^#\/rules/);
 });
 
-test("link a process: the tool list with descriptions is offered as a hint", async () => {
+test("add an attached link: the tool list with descriptions is offered as a hint", async () => {
   const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => !x.process)!;
   const main = await go(`#/q/${q.id}`);
-  const btn = ([...main.querySelectorAll("button")] as any[]).find((b) => /Link a process/.test(b.textContent));
+  const btn = ([...main.querySelectorAll("button")] as any[]).find((b) => /Add an attached link/.test(b.textContent));
   btn.click();
   await sleep(50);
   const hints = document.querySelector(".tool-hints")!;

@@ -2,9 +2,10 @@
 import type { Ctx } from "./ctx.ts";
 import type { Question, Space } from "./types.ts";
 import * as repo from "./repo.ts";
+import { withFields, type FieldViews } from "./fields.ts";
 
-/** `activity_at`: the latest of the question's own activity and its process' activity on its platform. */
-export type ListedQuestion = Question & { activity_at: string };
+/** `activity_at`: the latest of the question's own activity and its process' activity on its platform. `fields`: see fields.ts. */
+export type ListedQuestion = Question & { activity_at: string; fields: FieldViews };
 
 const QUIET_DAYS = 30;
 
@@ -31,15 +32,18 @@ const STOP = new Set(
 const words = (s: string) => fold(s).split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
 
 export function list(ctx: Ctx, space: Space, f: Record<string, string | undefined>): ListedQuestion[] {
-  let qs: ListedQuestion[] = repo.listQuestions(ctx.db, space.id, { removed: f.removed === "only" ? "only" : "exclude" }).map((q) => ({ ...q, activity_at: activityAt(q) }));
+  let qs: ListedQuestion[] = repo.listQuestions(ctx.db, space.id, { removed: f.removed === "only" ? "only" : "exclude" }).map((q) => withFields({ ...q, activity_at: activityAt(q) }));
   const multi = (v?: string) => (v ? v.split(",").filter(Boolean) : undefined);
 
   const statuses = multi(f.status);
   if (statuses) qs = qs.filter((q) => statuses.includes(q.status));
-  if (f.source) qs = qs.filter((q) => q.status_source === f.source);
+  // Where the status comes from: "retrieved" or "typed" (older names: "process", "manual").
+  const source = f.source === "process" ? "retrieved" : f.source === "manual" ? "typed" : f.source;
+  if (source) qs = qs.filter((q) => q.fields.status.source === source);
   const tools = multi(f.tool);
   if (tools) qs = qs.filter((q) => q.process && tools.includes(q.process.tool_id));
-  if (f.item_type) qs = qs.filter((q) => q.process?.item_type === f.item_type);
+  // The kind in use: typed, or the item type the tool gives.
+  if (f.item_type) qs = qs.filter((q) => q.process && q.fields.kind.value === f.item_type);
   const states = multi(f.state);
   if (states) qs = qs.filter((q) => q.process?.fetched && states.includes(q.process.fetched.state));
   if (f.has_process === "yes") qs = qs.filter((q) => !!q.process);
@@ -68,7 +72,7 @@ export function list(ctx: Ctx, space: Space, f: Record<string, string | undefine
   if (f.q?.trim()) {
     const terms = fold(f.q).split(/\s+/).filter(Boolean);
     qs = qs.filter((q) => {
-      const hay = fold([q.title, q.why_it_matters, q.process?.framing, q.process?.fetched?.title, q.process?.item_type].filter(Boolean).join(" \n "));
+      const hay = fold([q.title, q.why_it_matters, q.process?.fetched?.title, q.fields.kind.value as string | undefined, q.fields.summary.value as string | undefined].filter(Boolean).join(" \n "));
       return terms.every((t) => hay.includes(t));
     });
   }

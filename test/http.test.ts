@@ -72,19 +72,21 @@ test("cross-origin writes are refused", async () => {
   assert.equal(res.status, 403);
 });
 
-test("add a tool directly: no proposal, usable at once, can be disabled", async () => {
+test("add a tool directly: usable at once, links already in the register join it, can be disabled", async () => {
   const url = "https://wiki.example.org/t/should-we/7";
-  const refused = await api(editToken, "POST", "questions", { title: "Wiki thread", process_url: url });
-  assert.equal(refused.json.error.code, "unknown_tool");
-  const added = await api(editToken, "POST", "tools", {
-    name: "Our wiki",
-    url_patterns: [{ pattern: refused.json.error.details.suggestion.pattern, item_type: "topic" }],
-    state_map: { Open: "open", Closed: "concluded" },
-  });
+  const preview = await api(editToken, "POST", "resolve-url", { url });
+  assert.equal(preview.json.matched, false);
+  const before = await api(editToken, "POST", "questions", { title: "Wiki thread", process_url: url });
+  assert.equal(before.status, 200, "a link not on the tool list is accepted");
+  assert.deepEqual([before.json.question.process.tool_id, before.json.question.fields.status.retrievable], ["custom", false]);
+  const added = await api(editToken, "POST", "tools", { name: "Our wiki", url_patterns: [{ pattern: preview.json.suggestion.pattern, item_type: "topic" }] });
   assert.equal(added.status, 200, JSON.stringify(added.json));
   const wiki = added.json.tools.find((x: any) => x.name === "Our wiki");
-  assert.ok(wiki && wiki.enabled && !wiki.added_by_question_id);
-  const used = await api(editToken, "POST", "questions", { title: "Wiki thread", process_url: url });
+  assert.ok(wiki && wiki.enabled && !wiki.added_by_question_id && !wiki.state_map);
+  const adopted = (await api(editToken, "GET", `questions/${before.json.question.id}`)).json;
+  assert.deepEqual([adopted.question.process.tool_id, adopted.question.fields.kind.value, adopted.question.fields.kind.source], [wiki.id, "topic", "retrieved"]);
+  assert.ok(adopted.activity.some((e: any) => e.action === "process.tool_matched"));
+  const used = await api(editToken, "POST", "questions", { title: "Wiki thread 2", process_url: "https://wiki.example.org/t/other/8" });
   assert.equal(used.status, 200);
   assert.equal(used.json.question.process.tool_id, wiki.id);
   const off = await api(editToken, "POST", `tools/${wiki.id}/enabled`, { enabled: false });
@@ -99,13 +101,11 @@ test("edit a manual tool; automatic tools can't be edited", async () => {
   const edited = await api(editToken, "PATCH", `tools/${board.id}`, {
     name: "Our board",
     url_patterns: [{ pattern: "https://board.example.org/c/:id", item_type: "card" }],
-    state_map: { Todo: "not_started", Done: "concluded" },
   });
   assert.equal(edited.status, 200, JSON.stringify(edited.json));
   const after = edited.json.tools.find((x: any) => x.id === board.id);
   assert.equal(after.name, "Our board");
   assert.equal(after.url_patterns[0].pattern, "https://board.example.org/c/:id");
-  assert.deepEqual(after.state_map, { Todo: "not_started", Done: "concluded" });
   const gh = await api(editToken, "PATCH", "tools/github", { name: "x", url_patterns: [{ pattern: "https://x.org/*", item_type: "x" }] });
   assert.equal(gh.status, 400);
   const view = await api(viewToken, "PATCH", `tools/${board.id}`, { name: "x" });
@@ -123,7 +123,7 @@ test("tools say what they're useful for: seeded, editable on every tool (automat
   assert.deepEqual(after.url_patterns, loomio.url_patterns, "patterns untouched");
   // Sending the unchanged patterns along is fine; changing them isn't.
   assert.equal((await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", url_patterns: loomio.url_patterns })).status, 200);
-  assert.equal((await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", state_map: { Open: "open" } })).status, 400);
+  assert.equal((await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", url_patterns: [{ pattern: "https://x.org/*", item_type: "x" }] })).status, 400);
   const kept = (await api(editToken, "GET", "space")).json.tools.find((x: any) => x.id === "loomio");
   assert.deepEqual([kept.name, kept.description], ["Loomio", "Votes on proposals"], "missing description keeps the current one");
   const cleared = await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", description: "" });
@@ -141,7 +141,7 @@ test("tool usage: questions per tool and in progress; custom processes counted b
   assert.deepEqual(tool.usage, { questions: 0, in_progress: 0 });
   const q1 = (await api(editToken, "POST", "questions", { title: "Usage one", process_url: "https://usage.example.org/1" })).json.question;
   await api(editToken, "POST", "questions", { title: "Usage two", process_url: "https://usage.example.org/2" });
-  await api(editToken, "POST", `questions/${q1.id}/process/manual`, { state: "open", raw_state: "Open" });
+  await api(editToken, "PUT", `questions/${q1.id}/fields`, { set: { status: { label: "Being discussed" } } });
   const c = (await api(editToken, "POST", "questions", { title: "Usage three" })).json.question;
   await api(editToken, "PUT", `questions/${c.id}/process`, { custom: { kind: "Garden meeting" } });
   const d = (await api(editToken, "POST", "questions", { title: "Usage four" })).json.question;
@@ -179,17 +179,25 @@ test("search, filters and duplicate hints", async () => {
   assert.ok(sim.json.similar.some((x: any) => x.title.startsWith("How do newcomers")));
   const noProc = await api(editToken, "GET", "questions?has_process=no&status=not_started,open");
   assert.ok(noProc.json.questions.length && noProc.json.questions.every((q: any) => !q.process && ["not_started", "open"].includes(q.status)));
-  const manual = await api(editToken, "GET", "questions?source=manual");
-  assert.ok(manual.json.questions.every((q: any) => q.status_source === "manual"));
+  const typed = await api(editToken, "GET", "questions?source=typed");
+  assert.ok(typed.json.questions.length && typed.json.questions.every((q: any) => q.fields.status.source === "typed"));
+  const old = await api(editToken, "GET", "questions?source=manual");
+  assert.equal(old.json.questions.length, typed.json.questions.length, "older name still accepted");
 });
 
-test("status: set by hand via the API, labels editable in settings", async () => {
+test("fields via the API: typed values with a note, views with their source; labels editable in settings", async () => {
   const q = (await api(editToken, "POST", "questions", { title: "Status via API" })).json.question;
   assert.equal(q.status_label, "Not started");
-  const set = await api(editToken, "PUT", `questions/${q.id}/status`, { source: "manual", label: "Agreed", note: "At the meeting" });
+  assert.deepEqual(q.fields.status, { value: { state: "not_started", label: "Not started" }, source: "typed", by: "Ana", at: q.created_at, retrievable: false });
+  const set = await api(editToken, "PUT", `questions/${q.id}/fields`, { set: { status: { label: "Agreed" }, end: "2026-01-09" }, note: "At the meeting" });
+  assert.equal(set.status, 200, JSON.stringify(set.json));
   assert.equal(set.json.question.status, "accepted");
+  assert.equal(set.json.question.fields.end.value, "2026-01-09");
+  assert.equal(set.json.activity[0].action, "question.fields_changed");
   assert.equal(set.json.activity[0].data.note, "At the meeting");
-  assert.equal((await api(editToken, "PUT", `questions/${q.id}/status`, { source: "process" })).status, 400);
+  assert.equal((await api(editToken, "PUT", `questions/${q.id}/fields`, { use_retrieved: ["status"] })).status, 400);
+  assert.equal((await api(viewToken, "PUT", `questions/${q.id}/fields`, { set: { summary: "x" } })).status, 403);
+  for (const gone of ["status", "dates"]) assert.equal((await api(editToken, "PUT", `questions/${q.id}/${gone}`, {})).status, 404, gone);
   const labels = [...(await api(editToken, "GET", "space")).json.space.settings.status_labels, { label: "Waiting for budget", state: "open" }];
   const saved = await api(editToken, "PUT", "settings/status-labels", { status_labels: labels });
   assert.equal(saved.status, 200, JSON.stringify(saved.json));
@@ -198,15 +206,16 @@ test("status: set by hand via the API, labels editable in settings", async () =>
   assert.equal((await api(editToken, "PUT", "settings/status-labels", { status_labels: [] })).status, 400);
 });
 
-test("custom process via the API: no link needed, state set by hand", async () => {
+test("custom process via the API: no link needed, fields typed", async () => {
   const q = (await api(editToken, "POST", "questions", { title: "Unconference topic?" })).json.question;
-  const r = await api(editToken, "PUT", `questions/${q.id}/process`, { custom: { kind: "Unconference", title: "Autumn unconference" } });
+  const r = await api(editToken, "PUT", `questions/${q.id}/process`, { kind: "Unconference" });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.question.process.tool_id, "custom");
-  assert.equal(r.json.question.status_source, "process");
+  assert.deepEqual(r.json.question.fields.kind, { value: "Unconference", source: "typed", by: "Ana", at: r.json.question.fields.kind.at, retrievable: false });
   assert.equal(r.json.tool, undefined);
-  const m = await api(editToken, "POST", `questions/${q.id}/process/manual`, { state: "concluded", raw_state: "Done", outcome_summary: "Notes published" });
+  const m = await api(editToken, "PUT", `questions/${q.id}/fields`, { set: { status: { label: "Done" }, summary: "Notes published" } });
   assert.equal(m.json.question.status, "concluded");
+  assert.equal((await api(editToken, "POST", `questions/${q.id}/process/manual`, { state: "open" })).status, 404, "old endpoint gone");
 });
 
 test("tools in the space payload show the effective fetch mode (Metaculus without a token is by hand)", async () => {
@@ -258,7 +267,7 @@ test("removed decision endpoints are gone", async () => {
 
 test("export contains everything; feed works; activity readable", async () => {
   const ex = await api(viewToken, "GET", "export");
-  assert.equal(ex.json.format, "question-register/v3");
+  assert.equal(ex.json.format, "question-register/v5");
   assert.ok(ex.json.questions.length > 0);
   assert.ok(ex.json.tools.length >= 6);
   assert.ok(ex.json.activity.length > 0);

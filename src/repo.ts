@@ -75,7 +75,6 @@ function rowToTool(r: Row): Tool {
     url_patterns: j(r.url_patterns_json),
     fetch_mode: r.fetch_mode,
     adapter: u(r.adapter),
-    state_map: j(r.state_map_json),
     added_by_question_id: u(r.added_by_question_id),
     enabled: !!r.enabled,
   };
@@ -93,8 +92,8 @@ export function getTool(db: DatabaseSync, spaceId: string, id: string): Tool | u
 export function insertTool(db: DatabaseSync, spaceId: string, t: Tool) {
   const pos = (db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM tools WHERE space_id = ?").get(spaceId) as Row).p;
   db.prepare(
-    `INSERT INTO tools (space_id, id, name, description, url_patterns_json, fetch_mode, adapter, state_map_json, added_by_question_id, enabled, position)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tools (space_id, id, name, description, url_patterns_json, fetch_mode, adapter, added_by_question_id, enabled, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     spaceId,
     t.id,
@@ -103,7 +102,6 @@ export function insertTool(db: DatabaseSync, spaceId: string, t: Tool) {
     JSON.stringify(t.url_patterns),
     t.fetch_mode,
     t.adapter ?? null,
-    s(t.state_map),
     t.added_by_question_id ?? null,
     t.enabled ? 1 : 0,
     pos,
@@ -111,11 +109,10 @@ export function insertTool(db: DatabaseSync, spaceId: string, t: Tool) {
 }
 
 export function updateTool(db: DatabaseSync, spaceId: string, t: Tool) {
-  db.prepare("UPDATE tools SET name = ?, description = ?, url_patterns_json = ?, state_map_json = ? WHERE space_id = ? AND id = ?").run(
+  db.prepare("UPDATE tools SET name = ?, description = ?, url_patterns_json = ? WHERE space_id = ? AND id = ?").run(
     t.name,
     t.description ?? null,
     JSON.stringify(t.url_patterns),
-    s(t.state_map),
     spaceId,
     t.id,
   );
@@ -144,7 +141,6 @@ function rowToProcess(r: Row): ProcessRow {
     url: u(r.url),
     tool_id: r.tool_id,
     item_type: r.item_type,
-    framing: u(r.framing),
     fetch_mode: r.fetch_mode,
     fetched: j(r.fetched_json),
     etag: u(r.etag),
@@ -156,7 +152,6 @@ function rowToProcess(r: Row): ProcessRow {
 export const publicProcess = (p: ProcessRow): Process => {
   const out: Process = { tool_id: p.tool_id, item_type: p.item_type, fetch_mode: p.fetch_mode };
   if (p.url) out.url = p.url;
-  if (p.framing) out.framing = p.framing;
   if (p.fetched) out.fetched = p.fetched;
   return out;
 };
@@ -168,8 +163,8 @@ function rowToQuestion(r: Row, p?: ProcessRow): Question {
     title: r.title,
     why_it_matters: u(r.why_it_matters),
     status: r.status,
-    status_source: r.status_source,
     status_label: u(r.status_label),
+    typed: j(r.typed_json) ?? {},
     removed_at: u(r.removed_at),
     created_at: r.created_at,
     created_by: r.created_by,
@@ -209,10 +204,18 @@ export function listQuestions(db: DatabaseSync, spaceId: string, opts: { removed
   );
 }
 
-const Q_COLS = ["title", "why_it_matters", "status", "status_source", "status_label", "removed_at", "last_activity_at"] as const;
+const Q_COLS = ["title", "why_it_matters", "status", "status_label", "typed_json", "removed_at", "last_activity_at"] as const;
 
 function questionValues(q: Question) {
-  return [q.title, q.why_it_matters ?? null, q.status, q.status_source, q.status_label ?? null, q.removed_at ?? null, q.last_activity_at];
+  return [
+    q.title,
+    q.why_it_matters ?? null,
+    q.status,
+    q.status_label ?? null,
+    JSON.stringify(q.typed ?? {}),
+    q.removed_at ?? null,
+    q.last_activity_at,
+  ];
 }
 
 export function insertQuestion(db: DatabaseSync, q: Question) {
@@ -242,13 +245,12 @@ export function upsertProcess(
   const existing = getProcessRow(db, q.id);
   if (existing) {
     db.prepare(
-      `UPDATE processes SET url = ?, tool_id = ?, item_type = ?, framing = ?, fetch_mode = ?, fetched_json = ?,
+      `UPDATE processes SET url = ?, tool_id = ?, item_type = ?, fetch_mode = ?, fetched_json = ?,
          etag = ?, next_refresh_at = ?, fail_count = ? WHERE question_id = ?`,
     ).run(
       p.url ?? null,
       p.tool_id,
       p.item_type,
-      p.framing ?? null,
       p.fetch_mode,
       s(p.fetched),
       extra.etag === undefined ? (existing.etag ?? null) : extra.etag,
@@ -258,8 +260,8 @@ export function upsertProcess(
     );
   } else {
     db.prepare(
-      `INSERT INTO processes (id, question_id, space_id, url, tool_id, item_type, framing, fetch_mode, fetched_json, etag, next_refresh_at, fail_count, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO processes (id, question_id, space_id, url, tool_id, item_type, fetch_mode, fetched_json, etag, next_refresh_at, fail_count, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       newId(),
       q.id,
@@ -267,7 +269,6 @@ export function upsertProcess(
       p.url ?? null,
       p.tool_id,
       p.item_type,
-      p.framing ?? null,
       p.fetch_mode,
       s(p.fetched),
       extra.etag ?? null,

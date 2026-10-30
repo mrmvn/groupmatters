@@ -1,7 +1,6 @@
 // Tool registry: seed tools, URL matching and classification (spec §5).
 import type { Ctx } from "./ctx.ts";
-import type { NormalizedState, Tool } from "./types.ts";
-import { NORMALIZED_STATES } from "./types.ts";
+import type { Tool } from "./types.ts";
 import { getAdapter, type Parsed } from "./adapters/index.ts";
 import { bad, isHttpsUrl, requireText } from "./util.ts";
 
@@ -44,16 +43,6 @@ export const SEED_TOOLS: Tool[] = [
       { pattern: "https://www.metaculus.com/questions/:id(\\d+){/*}?", item_type: "question" },
       { pattern: "https://metaculus.com/questions/:id(\\d+){/*}?", item_type: "question" },
     ],
-    state_map: {
-      Upcoming: "not_started",
-      Open: "open",
-      "Closed, awaiting resolution": "open",
-      "Resolved: Yes": "accepted",
-      "Resolved: No": "rejected",
-      "Resolved (numeric, date or multiple choice)": "concluded",
-      Annulled: "withdrawn",
-      Ambiguous: "withdrawn",
-    },
   },
   {
     id: "loomio",
@@ -69,15 +58,6 @@ export const SEED_TOOLS: Tool[] = [
       { pattern: "https://www.loomio.com/d/:key{/*}?", item_type: "discussion" },
       { pattern: "https://loomio.com/d/:key{/*}?", item_type: "discussion" },
     ],
-    state_map: {
-      "Not yet open": "not_started",
-      Open: "open",
-      "Closed: passed": "accepted",
-      "Closed: not passed": "rejected",
-      "Closed (other outcome)": "concluded",
-      "Discussion closed": "concluded",
-      Deleted: "withdrawn",
-    },
   },
   {
     id: "polis",
@@ -90,7 +70,6 @@ export const SEED_TOOLS: Tool[] = [
       { pattern: "https://pol.is/report/:id", item_type: "conversation" },
       { pattern: "https://pol.is/:id", item_type: "conversation" },
     ],
-    state_map: { Open: "open", Closed: "concluded" },
   },
   {
     // Any Decidim instance: its URLs are distinctive, and fetches only go to public addresses.
@@ -106,8 +85,6 @@ export const SEED_TOOLS: Tool[] = [
       { pattern: "https://*/:space(processes|assemblies|conferences|initiatives)/:slug/f/:component(\\d+)/meetings/:id(\\d+){/*}?", item_type: "meeting" },
       { pattern: "https://*/processes/:slug{/}?", item_type: "participatory_process" },
     ],
-    // Used only if an item can't be fetched (private): its state is then set by hand.
-    state_map: { Open: "open", Evaluating: "open", Accepted: "accepted", Rejected: "rejected", Withdrawn: "withdrawn", Finished: "concluded" },
   },
   {
     id: "kialo",
@@ -119,7 +96,6 @@ export const SEED_TOOLS: Tool[] = [
       { pattern: "https://www.kialo.com/:slug", item_type: "discussion" },
       { pattern: "https://www.kialo-edu.com/*", item_type: "discussion" },
     ],
-    state_map: { Open: "open", Closed: "concluded" },
   },
 ];
 
@@ -172,20 +148,8 @@ export function validatePattern(p: unknown): string {
   return pattern;
 }
 
-export function validateStateMap(m: unknown): Record<string, NormalizedState> | undefined {
-  if (m == null) return undefined;
-  if (typeof m !== "object" || Array.isArray(m)) throw bad("States must be an object of label → state");
-  const out: Record<string, NormalizedState> = {};
-  for (const [k, v] of Object.entries(m)) {
-    const label = requireText(k, "State label", 80);
-    if (!NORMALIZED_STATES.includes(v as NormalizedState)) throw bad(`Unknown state "${v}"`);
-    out[label] = v as NormalizedState;
-  }
-  return Object.keys(out).length ? out : undefined;
-}
-
 /** Tools added by giving an instance's address: the patterns are generated, the adapter fetches. */
-export const INSTANCE_KINDS: Record<string, { name: string; description: string; adapter: string; patterns: (host: string) => { pattern: string; item_type: string }[]; state_map: Record<string, NormalizedState> }> = {
+export const INSTANCE_KINDS: Record<string, { name: string; description: string; adapter: string; patterns: (host: string) => { pattern: string; item_type: string }[] }> = {
   consul: {
     name: "Consul Democracy",
     description: "A city's or organisation's citizen participation site: proposals, debates, participatory budgets and the projects voted in them.",
@@ -196,7 +160,6 @@ export const INSTANCE_KINDS: Record<string, { name: string; description: string;
       { pattern: `https://${host}/budgets/:id(\\d+)/investments/:inv{/*}?`, item_type: "investment" },
       { pattern: `https://${host}/budgets/:id(\\d+){/}?`, item_type: "budget" },
     ],
-    state_map: { Open: "open", Started: "open", Done: "accepted", Unfeasible: "rejected", Retired: "withdrawn", Finished: "concluded" },
   },
 };
 

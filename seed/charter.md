@@ -15,21 +15,21 @@ This is where we keep track of questions we want to answer together: decisions w
 
 ## Adding a question
 
-- Anyone can add a question. Write it in your own words; saying why it matters helps others.
+- Anyone can add a question. Write it in your own words; the summary and other details can be filled in right away or later.
 - Check the suggestions shown while you type: the question may already exist. On a question's page, picking a suggestion relates it instead.
 
 ## Processes
 
-- A question can be linked to **one** process: the place where it's worked on. That can be a link from a tool on the **tool list** (a pull request, a Loomio poll, a Polis conversation…) or a **custom** process described by hand (a meeting, an unconference), with or without a link.
-- For some tools (GitHub, GitLab, public Loomio polls and threads, Polis) the state and the last activity are fetched automatically. For the others, anyone updates the state by hand.
-- A short **framing** note is encouraged: how the process interprets the question, and what it can't tell us.
+- A question can be linked to **one** process: the place where it's worked on. That can be a link (a pull request, a Loomio poll, a forum thread…) or a process without a link (a meeting, an unconference).
+- Each field of a question (title, status, dates…) is either **retrieved** from the linked item, for sites on the **tool list**, or **typed** by someone. A typed value wins until someone chooses to use the retrieved one again.
+- Dated questions appear on the **timeline**.
 
 ## Status
 
 Every question is in one of these categories: **Not started**, **In progress**, **Accepted**, **Rejected**, **Concluded** (ended without a yes/no) or **Withdrawn**.
 
-- A question with a process **follows its process**: when the poll closes or the pull request is merged, the question's status changes with it.
-- Anyone can instead **set the status by hand**, picking one of the space's status labels (listed on the Rules page, each in one category). Questions without a process always have a hand-set status.
+- When the status can be retrieved, it changes with the item: when the poll closes or the pull request is merged.
+- Anyone can instead **type the status**, picking one of the space's status labels (listed on the Rules page, each in one category). Questions whose status can't be retrieved always have a typed status.
 
 ## Keeping the register tidy
 

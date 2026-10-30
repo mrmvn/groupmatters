@@ -22,7 +22,11 @@ export function describeEvent(e: ActivityEvent, titles: Map<string, string>): st
     case "question.created":
       return `${e.actor} added ${t}`;
     case "question.status_changed":
-      return `${t}: ${STATE[d.from] ?? d.from} → ${d.label ?? STATE[d.to] ?? d.to}${d.source === "process" ? " (from its process)" : ""}`;
+      return `${t}: ${STATE[d.from] ?? d.from} → ${d.label ?? STATE[d.to] ?? d.to}${d.source === "process" || d.source === "retrieved" ? " (retrieved)" : ""}`;
+    case "question.fields_changed": {
+      const names = Object.keys(d.fields ?? {}).map((f) => f.replace("_url", "").replace("_", " "));
+      return `${e.actor} changed ${names.join(", ")} of ${t}`;
+    }
     case "process.state_changed":
       return `${t}: process is now ${d.after?.outcome_summary ?? STATE[d.after?.state] ?? d.after?.state}`;
     case "relation.added":

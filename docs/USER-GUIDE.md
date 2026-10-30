@@ -16,8 +16,8 @@
 
 Every question is in one of six categories: **Not started**, **In progress**, **Accepted**, **Rejected**, **Concluded** (ended without a yes or no) or **Withdrawn**.
 
-- A question with a process **follows its process**: when the Loomio poll closes or the pull request is merged, the question's status changes by itself.
-- Or anyone can **set the status by hand** ("Set by hand instead…"), picking one of the group's status labels, like *Being discussed* or *Agreed*. You can go back to following the process at any time.
+- A question linked to a tool the register can read has its status **retrieved**: when the Loomio poll closes or the pull request is merged, it changes by itself.
+- Anyone can **type** a status instead, picking one of the group's status labels, like *Being discussed* or *Agreed*. "↺ use retrieved" goes back.
 
 The lanes: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **Withdrawn**. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
 
@@ -26,15 +26,29 @@ The lanes: **Current** (not started and in progress), **Ended** (accepted, rejec
 Type in the box at the top: **"Ask a question, or paste or drop a link."** You can also **drag a link** from another tab anywhere onto the page; on a question without a process, a dropped link becomes its process.
 
 - **Typing a question**: similar existing questions appear below. Check them first, then press *Add question*.
-- **Pasting a link** (a GitHub pull request, a Loomio poll, a Polis conversation…): the register recognises the tool and fills in the title. Rewrite it in your own words if you like.
-- If the link's tool isn't on the list, you can **add it** yourself (see Rules below), or link it as a custom process.
+- **Pasting a link** (a GitHub pull request, a Loomio poll, a Polis conversation…): the register recognises the tool and fills in the retrieved title. Keep it to follow the item's title, or rewrite it in your own words (it's then typed).
+- **A link from a site not on the tool list** works too: nothing is retrieved, so you type the title and the rest. You can **add the tool** (see Rules below), and the link starts being retrieved.
+
+Once you've typed a title or pasted a link, the **Details** (kind, status, summary, results, start, end) appear below, all optional. For a link the register can read, they are **pre-filled with what it retrieves** (tagged "retrieved") and keep following the item; change one to type your own. Without a link, fill what you know now; everything can be changed on the question's page. *Results* takes a link or a few words ("Adopted 9–1").
 
 ## Processes
 
-On a question's page, **Link a process…** offers two choices:
+On a question's page, the **Attached link** section (**Add an attached link…**) offers two choices:
 
-- **A link from a listed tool.** GitHub, GitLab, public Loomio polls and threads, Polis, Decidim (any instance) and Consul (once your instance is added in Rules) are followed automatically: state, results and last activity. The ↗ next to a process opens it. Others (Kialo, your own tools, private Loomio polls) are updated by hand with **Update state…**.
-- **Custom**: a meeting, an unconference, a paper survey… Give it a kind, and optionally a title, a date and a link. Its state is set by hand.
+- **A link.** From GitHub, GitLab, public Loomio polls and threads, Polis, Decidim (any instance) or Consul (once your instance is added in Rules), everything is retrieved: title, status, results, dates, last activity. From Kialo, your own tools or private items, only the kind and title. From any other site, nothing. The ↗ next to a process opens it.
+- **No link**: a meeting, an unconference, a paper survey… Give its kind.
+
+## Retrieved or typed
+
+Under **Details**, each value says where it comes from: **retrieved** (from the linked item, kept up to date; for a status, *retrieved as “merged”* shows the platform's own word) or **typed** (hover to see by whom and when). **Double-click a value** (or press ✎) to type your own. While a typed value is in use, the retrieved one is shown below it with **↺ use retrieved** to go back. The title works the same way, at the top of the page.
+
+## Dates
+
+**Start** and **End** are fields like the others: retrieved when the item gives them (a poll's opening and closing, a pull request's opening and merge), or typed (leave the time empty for the whole day). "No date" hides a retrieved one. An end in the future is a planned end.
+
+## Timeline
+
+The **Timeline** tab shows the questions that have a start date, each as a bar from its start to its end. Running questions reach today (dashed right edge); a planned end shows as a dashed outline; an ended question with no end date shows a short fading mark. Colours are the status categories, and a vertical line marks today. Hover a bar for its dates. Questions without a start date are counted below the chart. The search, shortcuts and filters are the same as the list's, and **Show these on a timeline** / **Show these as a list** switches between the two views with the same filters.
 
 ## Related questions
 
@@ -48,7 +62,7 @@ On a question's page, type in the **Related questions** box: matching questions 
 
 ## Rules
 
-The **Rules** tab shows how the register works (the charter), the list of tools and the status labels. Each tool says **what it's useful for** and how many questions use it (click the count to see them); custom processes in use are listed by kind. Anyone with edit access can **add or edit a tool** (including how its states map to categories; for tools followed automatically, only the name and description), and edit the **status labels** (each belongs to one category). The charter is changed by whoever runs the register, for now.
+The **Rules** tab shows how the register works (the charter), the list of tools and the status labels. Each tool says **what it's useful for** and how many questions use it (click the count to see them); custom processes in use are listed by kind. Anyone with edit access can **add or edit a tool** (the links it recognises; for tools read automatically, only the name and description), and edit the **status labels** (each belongs to one category). The charter is changed by whoever runs the register, for now.
 
 ## Good to know
 

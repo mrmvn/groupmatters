@@ -83,6 +83,30 @@ export function debounce(fn, ms) {
   };
 }
 
+// Question dates: a whole day ("2026-03-01", local calendar day) or a moment (ISO).
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const isDay = (v) => DAY_RE.test(v ?? "");
+/** When a date value begins, in ms (a whole day starts at local midnight). */
+export function dateStart(v) {
+  const m = DAY_RE.exec(v);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : Date.parse(v);
+}
+/** When a date value ends, in ms (a whole day lasts until the next local midnight). */
+export function dateEnd(v) {
+  const m = DAY_RE.exec(v);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3] + 1).getTime() : Date.parse(v);
+}
+/** "3 Mar 2026" for a whole day, "3 Mar 2026, 18:00" for a moment. */
+export const fmtWhen = (v) => (isDay(v) ? new Date(dateStart(v)).toLocaleDateString(undefined, { dateStyle: "medium" }) : fmtDate(v));
+/** A date value → `{date, time}` input values (local); and back. An empty time means the whole day. */
+export function toDayTimeInputs(v) {
+  if (!v) return { date: "", time: "" };
+  if (isDay(v)) return { date: v, time: "" };
+  const [date, time] = toLocalInput(v).split("T");
+  return { date, time };
+}
+export const fromDayTimeInputs = (date, time) => (!date ? "" : time ? new Date(`${date}T${time}`).toISOString() : date);
+
 /** Local datetime-input value ↔ ISO */
 export function toLocalInput(iso) {
   const d = new Date(iso);

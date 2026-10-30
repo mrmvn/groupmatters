@@ -1,16 +1,16 @@
-// Processes: attach / replace / remove, hand-set states, refresh, and keeping the question's status
-// in step with its process.
-// A question has at most one process: a link from a listed tool, or a custom process (a meeting,
-// an unconference…) described by hand, with or without a link.
+// Processes: attach / replace / remove and refresh. A question has at most one process: a link
+// matching a tool on the tool list (its fields are retrieved), or a custom process: a link to a site
+// that isn't on the list, or no link at all (a meeting…), whose fields are typed. See fields.ts.
 import type { Ctx } from "./ctx.ts";
 import type { Fetched, NormalizedState, Process, Question, Space, Tool } from "./types.ts";
-import { CUSTOM_TOOL_ID, isQuestionState, isTerminal, NORMALIZED_STATES } from "./types.ts";
+import { CUSTOM_TOOL_ID, NORMALIZED_STATES } from "./types.ts";
 import * as repo from "./repo.ts";
 import { tx } from "./db.ts";
 import { matchUrl, suggestPattern, type Match } from "./tools.ts";
 import { AdapterError, getAdapter } from "./adapters/index.ts";
 import { fetchPageTitle } from "./pagetitle.ts";
-import { bad, HttpError, isHttpsUrl, requireText, trimOrUndef } from "./util.ts";
+import { freezeUnretrievable, sync } from "./fields.ts";
+import { bad, HttpError, isHttpsUrl, trimOrUndef } from "./util.ts";
 
 const OPEN_INTERVAL_MS = 15 * 60_000;
 const TERMINAL_INTERVAL_MS = 24 * 60 * 60_000;
@@ -18,19 +18,6 @@ const MAX_BACKOFF_MS = 24 * 60 * 60_000;
 const MIN_MANUAL_REFRESH_MS = 30_000;
 
 export const isNormalizedState = (s: unknown): s is NormalizedState => NORMALIZED_STATES.includes(s as NormalizedState);
-
-export function unknownToolError(url: string) {
-  const e = new HttpError(422, "unknown_tool", "This link doesn't match any tool on the tool list.");
-  (e as any).details = { suggestion: suggestPattern(url) };
-  return e;
-}
-
-export function matchOrThrow(ctx: Ctx, space: Space, url: string): Match {
-  if (!isHttpsUrl(url)) throw bad("Process links must be https:// URLs");
-  const m = matchUrl(ctx, repo.listTools(ctx.db, space.id), url);
-  if (!m) throw unknownToolError(url);
-  return m;
-}
 
 /** A URL without the parts that don't change what it points to (www., #fragment, trailing slash, utm_*). */
 export function canonicalUrl(url: string): string {
@@ -55,8 +42,8 @@ function itemKeys(ctx: Ctx, tools: Tool[], url: string): string[] {
 }
 
 /**
- * The question already tracking this link, if any (removed questions don't count).
- * Custom processes are not checked: one meeting can address several questions.
+ * The question already tracking this item through a tool on the list, if any (removed questions don't
+ * count). Links to pages not on the list (meeting notes…) can serve several questions, so they're not compared.
  */
 export function findQuestionWithLink(ctx: Ctx, space: Space, url: string, excludeId?: string): Question | undefined {
   const tools = repo.listTools(ctx.db, space.id);
@@ -117,7 +104,7 @@ async function lookupUrl(ctx: Ctx, m: Match, url: string): Promise<CacheEntry> {
 }
 
 export type UrlPreview =
-  | { matched: false; suggestion?: { name: string; pattern: string } }
+  | { matched: false; suggestion?: { name: string; pattern: string }; existing?: { id: string; title: string } }
   | {
       matched: true;
       tool_id: string;
@@ -135,8 +122,8 @@ export type UrlPreview =
 export async function previewUrl(ctx: Ctx, space: Space, url: string): Promise<UrlPreview> {
   url = url.trim();
   const m = matchUrl(ctx, repo.listTools(ctx.db, space.id), url);
-  if (!m) return { matched: false as const, suggestion: suggestPattern(url) };
   const existing = findQuestionWithLink(ctx, space, url);
+  if (!m) return { matched: false as const, suggestion: suggestPattern(url), ...(existing ? { existing: { id: existing.id, title: existing.title } } : {}) };
   if (existing) {
     // No need to fetch: the link is already tracked.
     return { matched: true as const, tool_id: m.tool.id, tool_name: m.tool.name, item_type: m.item_type, fetch_mode: m.fetch_mode, existing: { id: existing.id, title: existing.title } };
@@ -155,50 +142,39 @@ export async function previewUrl(ctx: Ctx, space: Space, url: string): Promise<U
   };
 }
 
-export type Prepared = { process: Process; etag?: string; failed: boolean };
+/** `kind`: a kind typed along with a custom process ("General assembly"). */
+export type Prepared = { process: Process; etag?: string; failed: boolean; kind?: string };
 
 /**
  * Validate and fetch what's needed to attach a process (outside any transaction).
- * Body: `{url, framing?}` for a listed tool, or `{custom: {kind, title?, url?, when?}, framing?}`.
+ * Body: `{url?, kind?}` (also accepted as `{custom: {url?, kind?}}`). A link matching a tool on the
+ * list is retrieved through it; any other https link, or none, makes a custom process (a kind is
+ * then needed when there's no link).
  */
 export async function prepareProcess(ctx: Ctx, space: Space, body: any): Promise<Prepared> {
-  const framing = trimOrUndef(body?.framing, 2000);
-  if (body?.custom) return prepareCustom(ctx, body.custom, framing);
-  const url = String(body?.url ?? "").trim();
-  const m = matchOrThrow(ctx, space, url);
-  const p: Process = { url, tool_id: m.tool.id, item_type: m.item_type, fetch_mode: m.fetch_mode };
-  if (framing) p.framing = framing;
-  const now = ctx.now().toISOString();
-  const r = await lookupUrl(ctx, m, url);
-  if (r.fetched) return { process: { ...p, fetched: r.fetched }, etag: r.etag, failed: false };
-  if (r.error?.manualFallback) {
-    // Exists but can't be read (private, or no API token): updated by hand from now on.
-    return { process: { ...p, fetch_mode: "manual", fetched: { state: "unknown", terminal: false, fetched_at: now, fetch_error: r.error.message } }, failed: false };
-  }
-  if (r.error) return { process: { ...p, fetched: { state: "unknown", terminal: false, fetched_at: now, fetch_error: r.error.message } }, failed: true };
-  // Manual tool: no state yet, maybe a title.
-  return { process: { ...p, fetched: { ...(r.title ? { title: r.title } : {}), state: "unknown", terminal: false, fetched_at: now } }, failed: false };
-}
-
-function prepareCustom(ctx: Ctx, c: any, framing?: string): Prepared {
-  const kind = requireText(c?.kind, "Kind of process", 60);
-  const url = trimOrUndef(c?.url, 2000);
+  const c = body?.custom ?? body ?? {};
+  const url = trimOrUndef(c.url ?? body?.url, 2000);
+  const kind = trimOrUndef(c.kind ?? body?.kind, 60);
   if (url && !isHttpsUrl(url)) throw bad("Links must be https:// URLs");
-  const title = trimOrUndef(c?.title, 300);
-  const when = trimOrUndef(c?.when, 40);
-  let whenIso: string | undefined;
-  if (when) {
-    const d = new Date(when);
-    if (isNaN(d.getTime())) throw bad("Invalid date");
-    whenIso = d.toISOString();
+  const m = url ? matchUrl(ctx, repo.listTools(ctx.db, space.id), url) : undefined;
+  if (!m) {
+    if (!url && !kind) throw bad("Give a link, or the kind of process (a meeting, a survey…)");
+    const p: Process = { tool_id: CUSTOM_TOOL_ID, item_type: "", fetch_mode: "manual" };
+    if (url) p.url = url;
+    return { process: p, failed: false, ...(kind ? { kind } : {}) };
   }
-  const fetched: Fetched = { state: "unknown", terminal: false, fetched_at: ctx.now().toISOString() };
-  if (title) fetched.title = title;
-  if (whenIso) fetched.dates = { opens_at: whenIso };
-  const p: Process = { tool_id: CUSTOM_TOOL_ID, item_type: kind, fetch_mode: "manual", fetched };
-  if (url) p.url = url;
-  if (framing) p.framing = framing;
-  return { process: p, failed: false };
+  const p: Process = { url, tool_id: m.tool.id, item_type: m.item_type, fetch_mode: m.fetch_mode };
+  const now = ctx.now().toISOString();
+  const r = await lookupUrl(ctx, m, url!);
+  const extra = kind ? { kind } : {};
+  if (r.fetched) return { process: { ...p, fetched: r.fetched }, etag: r.etag, failed: false, ...extra };
+  if (r.error?.manualFallback) {
+    // Exists but can't be read (private, or no API token): only the type and title are retrieved.
+    return { process: { ...p, fetch_mode: "manual", fetched: { state: "unknown", terminal: false, fetched_at: now, fetch_error: r.error.message } }, failed: false, ...extra };
+  }
+  if (r.error) return { process: { ...p, fetched: { state: "unknown", terminal: false, fetched_at: now, fetch_error: r.error.message } }, failed: true, ...extra };
+  // A tool updated by hand: the page title, when it has one.
+  return { process: { ...p, fetched: { ...(r.title ? { title: r.title } : {}), state: "unknown", terminal: false, fetched_at: now } }, failed: false, ...extra };
 }
 
 function nextRefresh(ctx: Ctx, f: Fetched | undefined, failCount: number, retryAfterMs?: number) {
@@ -208,18 +184,6 @@ function nextRefresh(ctx: Ctx, f: Fetched | undefined, failCount: number, retryA
     return new Date(now + Math.max(backoff, retryAfterMs ?? 0)).toISOString();
   }
   return new Date(now + (f?.terminal ? TERMINAL_INTERVAL_MS : OPEN_INTERVAL_MS)).toISOString();
-}
-
-/** If the question follows its process, copy the process state onto it. Runs inside a transaction. */
-export function followProcess(ctx: Ctx, questionId: string, actor = "system") {
-  const q = repo.getQuestionById(ctx.db, questionId);
-  if (!q || q.status_source !== "process") return;
-  const s = q.process?.fetched?.state;
-  if (!isQuestionState(s) || s === q.status) return;
-  const from = q.status;
-  q.status = s;
-  repo.saveQuestion(ctx.db, q);
-  repo.logEvent(ctx, { space_id: q.space_id, question_id: q.id, actor, action: "question.status_changed", data: { from, to: s, source: "process" } });
 }
 
 /** Store a prepared process on a question (inside a transaction). Logs attach/replace. */
@@ -253,86 +217,38 @@ const summarize = (p: Process) => ({
   item_type: p.item_type,
   state: p.fetched?.state,
   title: p.fetched?.title,
-  framing: p.framing,
 });
 
-/** Remove the process. A question that followed it keeps its current status, now set by hand. */
+/**
+ * Remove the process. The title and status it gave are kept, now typed; the typed kind goes with it
+ * (it was the kind of process). Dates, summary and results typed on the question stay.
+ */
 export function removeProcess(ctx: Ctx, space: Space, q: Question, actor: string) {
   return tx(ctx.db, () => {
     if (!q.process) throw bad("This question has no process");
     repo.deleteProcess(ctx.db, q.id);
     repo.logEvent(ctx, { space_id: space.id, question_id: q.id, actor, action: "process.removed", data: summarize(q.process) });
     delete q.process;
-    if (q.status_source === "process") {
-      q.status_source = "manual";
-      q.status_label = labelFor(space, q.status);
-      repo.saveQuestion(ctx.db, q);
-      repo.logEvent(ctx, { space_id: space.id, question_id: q.id, actor, action: "question.status_changed", data: { from: q.status, to: q.status, source: "manual", label: q.status_label, reason: "process removed" } });
-    }
+    delete q.typed.kind;
+    freezeUnretrievable(space, q, actor, ctx.now().toISOString());
+    repo.saveQuestion(ctx.db, q);
+    sync(ctx, q, actor);
     return q;
   });
 }
 
-/** The space's first label for a category (or the category id if the space has none). */
-export function labelFor(space: Space, state: string): string {
-  return space.settings.status_labels.find((l) => l.state === state)?.label ?? state;
-}
-
-export function setFraming(ctx: Ctx, q: Question, actor: string, framingIn: unknown) {
-  if (!q.process) throw bad("This question has no process");
-  const framing = trimOrUndef(framingIn, 2000);
-  const before = q.process.framing;
-  if (before === framing) return q;
-  const row = repo.getProcessRow(ctx.db, q.id)!;
-  tx(ctx.db, () => {
-    repo.upsertProcess(ctx.db, q, { ...repo.publicProcess(row), framing }, {}, ctx.now().toISOString());
-    repo.logEvent(ctx, { space_id: q.space_id, question_id: q.id, actor, action: "process.framing_changed", data: { before, after: framing } });
-  });
-  q.process = { ...q.process, framing };
-  if (!framing) delete q.process.framing;
-  return q;
-}
-
-/** Processes updated by hand (manual tools, custom processes, unreadable items): anyone with edit access. */
-export function manualUpdate(ctx: Ctx, q: Question, actor: string, body: any) {
-  if (!q.process) throw bad("This question has no process");
-  if (q.process.fetch_mode !== "manual") throw bad("This process is updated automatically; use Refresh");
-  const state = body?.state;
-  if (!isNormalizedState(state) || state === "unknown") throw bad("Choose a state");
-  const results_url = trimOrUndef(body?.results_url, 2000);
-  if (results_url && !isHttpsUrl(results_url)) throw bad("The results link must be an https:// URL");
-  const before = q.process.fetched;
-  const fetched: Fetched = {
-    ...(before?.title ? { title: before.title } : {}),
-    raw_state: trimOrUndef(body?.raw_state, 80),
-    state,
-    terminal: isTerminal(state),
-    outcome_summary: trimOrUndef(body?.outcome_summary, 300),
-    ...(before?.dates ? { dates: before.dates } : {}),
-    fetched_at: ctx.now().toISOString(),
-  };
-  const extra = { ...(before?.extra ?? {}) };
-  if (results_url) extra.results_url = results_url;
-  else delete extra.results_url;
-  if (Object.keys(extra).length) fetched.extra = extra;
-  for (const k of Object.keys(fetched) as (keyof Fetched)[]) if (fetched[k] === undefined) delete fetched[k];
-  const row = repo.getProcessRow(ctx.db, q.id)!;
-  tx(ctx.db, () => {
-    repo.upsertProcess(ctx.db, q, { ...repo.publicProcess(row), fetched }, {}, fetched.fetched_at);
-    repo.logEvent(ctx, {
-      space_id: q.space_id,
-      question_id: q.id,
-      actor,
-      action: "process.state_changed",
-      data: { manual: true, before: before && pickState(before), after: pickState(fetched) },
-    });
-    followProcess(ctx, q.id, actor);
-  });
-  q.process = { ...q.process, fetched };
-  return q;
-}
-
 const pickState = (f: Fetched) => ({ state: f.state, raw_state: f.raw_state, outcome_summary: f.outcome_summary, title: f.title });
+
+/** After a refresh: reload the question and bring its title and status in step (logged as system). */
+function syncAfterRefresh(ctx: Ctx, questionId: string, frozen = false) {
+  const q = repo.getQuestionById(ctx.db, questionId);
+  if (!q) return;
+  if (frozen) {
+    freezeUnretrievable(repo.getSpace(ctx.db, q.space_id), q, "system", ctx.now().toISOString());
+    repo.saveQuestion(ctx.db, q);
+  }
+  sync(ctx, q);
+}
 
 export type RefreshOutcome = { changed: boolean; error?: string; skipped?: string };
 
@@ -374,7 +290,7 @@ export async function refreshProcess(ctx: Ctx, questionId: string, opts: { onDem
           action: "process.state_changed",
           data: { before: prev && pickState(prev), after: pickState(fetched) },
         });
-      followProcess(ctx, questionId);
+      syncAfterRefresh(ctx, questionId);
     });
     return { changed };
   } catch (e) {
@@ -386,6 +302,8 @@ export async function refreshProcess(ctx: Ctx, questionId: string, opts: { onDem
       tx(ctx.db, () => {
         repo.upsertProcess(ctx.db, q, { ...repo.publicProcess(row), fetch_mode: "manual", fetched }, { next_refresh_at: null, fail_count: 0 }, nowIso);
         repo.logEvent(ctx, { space_id: row.space_id, question_id: questionId, actor: "system", action: "process.now_manual", data: { reason: msg } });
+        // Its status can't be retrieved any more: keep the current one, now typed.
+        syncAfterRefresh(ctx, questionId, true);
       });
       return { changed: false, error: msg };
     }

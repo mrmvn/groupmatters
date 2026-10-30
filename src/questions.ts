@@ -1,15 +1,16 @@
-// Questions: creation, edits, status, process and relations. All rules enforced here, server-side.
+// Questions: creation, edits, process and relations. All rules enforced here, server-side.
 //
-// Status: every question has a category (QUESTION_STATES). It either follows the linked process
-// (`status_source: "process"`) or is set by hand from the space's status labels ("manual").
-// Attaching a process makes the question follow it; anyone can switch back to setting it by hand.
+// Each field (title, kind, status, summary, results link, start, end) is retrieved from the linked
+// item or typed (see fields.ts). Linking an item whose status can be retrieved makes the status
+// follow it; anyone can type a value instead, and go back to the retrieved one.
 import type { Ctx } from "./ctx.ts";
-import type { Question, QuestionState, RelationKind, Space } from "./types.ts";
-import { isQuestionState, RELATION_KINDS } from "./types.ts";
+import type { Question, RelationKind, Space } from "./types.ts";
+import { RELATION_KINDS } from "./types.ts";
 import * as repo from "./repo.ts";
 import { tx } from "./db.ts";
-import { duplicateLinkError, findQuestionWithLink, followProcess, labelFor, prepareProcess, storeProcess } from "./processes.ts";
-import { bad, conflict, HttpError, newId, notFound, requireText, trimOrUndef } from "./util.ts";
+import { duplicateLinkError, findQuestionWithLink, prepareProcess, storeProcess, type Prepared } from "./processes.ts";
+import { duplicateTitleError, freezeUnretrievable, parseCreateFields, resolveStatus, retrievable, setFields, sync, typeCreateFields, type FieldsBody } from "./fields.ts";
+import { bad, conflict, newId, notFound, requireText, trimOrUndef } from "./util.ts";
 
 const TITLE_MAX = 300;
 
@@ -21,18 +22,6 @@ export function load(ctx: Ctx, space: Space, id: string): Question {
   const q = repo.getQuestion(ctx.db, space.id, String(id));
   if (!q) throw notFound("Question not found");
   return q;
-}
-
-/** Resolve a hand-set status from `{label}` or `{state}` against the space's labels. */
-export function resolveManualStatus(space: Space, body: any): { state: QuestionState; label: string } {
-  const label = trimOrUndef(body?.label, 80);
-  if (label) {
-    const hit = space.settings.status_labels.find((l) => l.label.toLowerCase() === label.toLowerCase());
-    if (!hit) throw bad(`Unknown status "${label}"`);
-    return { state: hit.state, label: hit.label };
-  }
-  if (!isQuestionState(body?.state)) throw bad("Choose a status");
-  return { state: body.state, label: labelFor(space, body.state) };
 }
 
 /** Titles compared without case, accents, punctuation or extra spaces. */
@@ -48,15 +37,12 @@ export const normalizeTitle = (t: string) =>
 function assertTitleFree(ctx: Ctx, space: Space, title: string, excludeId?: string) {
   const n = normalizeTitle(title);
   const existing = repo.listQuestions(ctx.db, space.id).find((q) => q.id !== excludeId && normalizeTitle(q.title) === n);
-  if (!existing) return;
-  const e = new HttpError(409, "duplicate_title", `“${existing.title}” is already in the register.`);
-  (e as any).details = { existing: { id: existing.id, title: existing.title } };
-  throw e;
+  if (existing) throw duplicateTitleError(existing);
 }
 
 /** Refuse a link another (non-removed) question already tracks. */
-function assertLinkFree(ctx: Ctx, space: Space, url: string | undefined, toolId: string | undefined, excludeId?: string) {
-  if (!url || toolId === "custom") return;
+function assertLinkFree(ctx: Ctx, space: Space, url: string | undefined, excludeId?: string) {
+  if (!url) return;
   const existing = findQuestionWithLink(ctx, space, url, excludeId);
   if (existing) throw duplicateLinkError(existing);
 }
@@ -71,38 +57,64 @@ function validateRelated(ctx: Ctx, space: Space, q: { id?: string }, otherId: un
 }
 
 /**
- * Create a question. Optional: a process (`process_url` + `framing`, or `process: {custom: …}`),
- * a related question (`related_id`), a hand-set status (`status: {label}|{state}`).
+ * After a process is stored: what the question types and follows. The status follows the new item when
+ * it can be retrieved; the typed kind, summary and results belonged to the previous process. A kind
+ * typed with the process is kept. Fields the item can't give (title, status) are typed with their
+ * current values. Doesn't save.
+ */
+function adoptProcess(ctx: Ctx, space: Space, q: Question, actor: string, prepared: Prepared) {
+  const now = ctx.now().toISOString();
+  for (const f of ["kind", "summary", "results_url"] as const) delete q.typed[f];
+  if (retrievable(q).has("status")) delete q.typed.status;
+  if (prepared.kind) q.typed.kind = { value: prepared.kind, by: actor, at: now };
+  freezeUnretrievable(space, q, actor, now);
+}
+
+/**
+ * Create a question. Optional: a process (`process_url`, or `process: {url?, kind?}`), a related
+ * question (`related_id`), a typed status (`status: {label}|{state}`), typed `fields` (`summary`,
+ * `results_url`, `start`, `end`; empty ones are left to the linked item). With a link, the title is
+ * retrieved unless a different one is given (then it's typed).
  */
 export async function create(ctx: Ctx, space: Space, actor: string, body: any): Promise<Question> {
-  const title = requireText(body?.title, "Title", TITLE_MAX);
+  const givenTitle = trimOrUndef(body?.title, TITLE_MAX + 1);
   const why = trimOrUndef(body?.why_it_matters, 5000);
   // `parent_id` is the pre-relations name, still accepted.
   const related = validateRelated(ctx, space, {}, body?.related_id ?? body?.parent_id);
   const processUrl = trimOrUndef(body?.process_url, 2000);
-  const processBody = body?.process ?? (processUrl ? { url: processUrl, framing: body?.framing } : undefined);
-  assertTitleFree(ctx, space, title);
-  if (processBody && !processBody.custom) assertLinkFree(ctx, space, String(processBody.url ?? "").trim(), undefined);
+  const processBody = body?.process ?? (processUrl ? { url: processUrl } : undefined);
+  const linkUrl = trimOrUndef(processBody?.url ?? processBody?.custom?.url, 2000);
+  if (linkUrl) assertLinkFree(ctx, space, linkUrl);
   const prepared = processBody ? await prepareProcess(ctx, space, processBody) : undefined;
-  const manual = body?.status ? resolveManualStatus(space, body.status) : { state: "not_started" as const, label: labelFor(space, "not_started") };
+  const retrievedTitle = prepared?.process.fetched?.title?.trim();
+  const title = requireText(givenTitle ?? retrievedTitle, "Title", TITLE_MAX);
+  assertTitleFree(ctx, space, title);
+  const typedStatus = body?.status ? resolveStatus(space, body.status) : undefined;
+  const typedFields = parseCreateFields(space, body?.fields);
 
   const now = ctx.now().toISOString();
   const q: Question = {
     id: newId(),
     space_id: space.id,
     title,
-    status: manual.state,
-    status_source: "manual",
-    status_label: manual.label,
+    status: typedStatus?.state ?? "not_started",
+    typed: {},
     created_at: now,
     created_by: actor,
     last_activity_at: now,
   };
   if (why) q.why_it_matters = why;
-  if (prepared && !body?.status) {
-    q.status_source = "process";
-    delete q.status_label;
-  }
+  if (title !== retrievedTitle) q.typed.title = { value: title, by: actor, at: now };
+  if (prepared) {
+    q.process = prepared.process; // for adoptProcess; stored below, with its log entry
+    adoptProcess(ctx, space, q, actor, prepared);
+  } else freezeUnretrievable(space, q, actor, now);
+  // A status given explicitly is typed, even when the item could give one.
+  if (typedStatus) q.typed.status = { value: typedStatus, by: actor, at: now };
+  typeCreateFields(q, actor, now, typedFields);
+  delete q.process;
+  const st = q.typed.status?.value as { label?: string } | undefined;
+  if (st?.label) q.status_label = st.label;
 
   tx(ctx.db, () => {
     repo.insertQuestion(ctx.db, q);
@@ -110,86 +122,52 @@ export async function create(ctx: Ctx, space: Space, actor: string, body: any): 
       title,
       ...(why ? { why_it_matters: why } : {}),
       ...(related ? { related_id: related.id } : {}),
-      status: q.status,
-      status_source: q.status_source,
-      ...(q.status_label ? { label: q.status_label } : {}),
+      typed: Object.keys(q.typed),
     });
     if (related) insertRelation(ctx, space, q, related, actor);
     if (prepared) {
       storeProcess(ctx, q, actor, prepared);
-      followProcess(ctx, q.id, actor);
+      sync(ctx, q, actor);
     }
   });
   return load(ctx, space, q.id);
 }
 
+/** Edit the title (typed) and why it matters. */
 export function edit(ctx: Ctx, space: Space, q: Question, actor: string, body: any): Question {
-  const changes: Record<string, { before: unknown; after: unknown }> = {};
   if (body?.title !== undefined) {
     const t = requireText(body.title, "Title", TITLE_MAX);
-    if (t !== q.title) assertTitleFree(ctx, space, t, q.id);
-    if (t !== q.title) (changes.title = { before: q.title, after: t }), (q.title = t);
+    if (t !== q.title) setFields(ctx, space, q, actor, { set: { title: t } }, (x) => assertTitleFree(ctx, space, x, q.id));
   }
   if (body?.why_it_matters !== undefined) {
     const w = trimOrUndef(body.why_it_matters, 5000);
     if (w !== q.why_it_matters) {
-      changes.why_it_matters = { before: q.why_it_matters ?? null, after: w ?? null };
+      const change = { why_it_matters: { before: q.why_it_matters ?? null, after: w ?? null } };
       if (w) q.why_it_matters = w;
       else delete q.why_it_matters;
+      tx(ctx.db, () => {
+        repo.saveQuestion(ctx.db, q);
+        log(ctx, q, actor, "question.edited", change);
+      });
     }
   }
-  if (Object.keys(changes).length === 0) return q;
-  tx(ctx.db, () => {
-    repo.saveQuestion(ctx.db, q);
-    log(ctx, q, actor, "question.edited", changes);
-  });
   return q;
 }
 
-/** `{source: "process"}` to follow the process, or `{source: "manual", label | state, note?}`. */
-export function setStatus(ctx: Ctx, space: Space, q: Question, actor: string, body: any): Question {
-  const note = trimOrUndef(body?.note, 1000);
-  const from = { status: q.status, source: q.status_source, label: q.status_label };
-  if (body?.source === "process") {
-    if (!q.process) throw bad("Link a process first");
-    q.status_source = "process";
-    delete q.status_label;
-    const s = q.process.fetched?.state;
-    if (isQuestionState(s)) q.status = s;
-  } else if (body?.source === "manual" || body?.source === undefined) {
-    const m = resolveManualStatus(space, body);
-    q.status_source = "manual";
-    q.status = m.state;
-    q.status_label = m.label;
-  } else throw bad("Unknown status source");
-  if (from.status === q.status && from.source === q.status_source && from.label === q.status_label && !note) return q;
-  tx(ctx.db, () => {
-    repo.saveQuestion(ctx.db, q);
-    log(ctx, q, actor, "question.status_changed", {
-      from: from.status,
-      to: q.status,
-      source: q.status_source,
-      ...(q.status_label ? { label: q.status_label } : {}),
-      ...(note ? { note } : {}),
-    });
-  });
-  return q;
+/** Type field values, or go back to the retrieved ones (see fields.ts). */
+export function updateFields(ctx: Ctx, space: Space, q: Question, actor: string, body: FieldsBody): Question {
+  return setFields(ctx, space, q, actor, body, (t) => assertTitleFree(ctx, space, t, q.id));
 }
 
-/** Attach or replace the process. The question then follows it. */
+/** Attach or replace the process. The status then follows it, when it can be retrieved. */
 export async function attachProcess(ctx: Ctx, space: Space, q: Question, actor: string, body: any): Promise<Question> {
-  if (!body?.custom) assertLinkFree(ctx, space, String(body?.url ?? "").trim(), undefined, q.id);
+  assertLinkFree(ctx, space, trimOrUndef(body?.url ?? body?.custom?.url, 2000), q.id);
   const prepared = await prepareProcess(ctx, space, body);
   tx(ctx.db, () => {
     storeProcess(ctx, q, actor, prepared);
-    if (q.status_source !== "process") {
-      const from = q.status;
-      q.status_source = "process";
-      delete q.status_label;
-      repo.saveQuestion(ctx.db, q);
-      log(ctx, q, actor, "question.status_changed", { from, to: from, source: "process", reason: "process linked" });
-    }
-    followProcess(ctx, q.id, actor);
+    adoptProcess(ctx, space, q, actor, prepared);
+    repo.saveQuestion(ctx.db, q);
+    sync(ctx, q, actor);
   });
   return load(ctx, space, q.id);
 }
@@ -212,7 +190,7 @@ export function restore(ctx: Ctx, space: Space, q: Question, actor: string): Que
   if (!q.removed_at) throw conflict("This question isn't removed");
   // Someone may have added the same question or link in the meantime.
   assertTitleFree(ctx, space, q.title, q.id);
-  assertLinkFree(ctx, space, q.process?.url, q.process?.tool_id, q.id);
+  assertLinkFree(ctx, space, q.process?.url, q.id);
   delete q.removed_at;
   tx(ctx.db, () => {
     repo.saveQuestion(ctx.db, q);

@@ -3,6 +3,19 @@
 // in migration 3; see DECISIONS.md. Its history stays in the activity log.
 
 export type ISODate = string;
+/** A whole day ("2026-03-01", no time zone) or a moment (ISO-8601 in UTC). */
+export type DateValue = string;
+
+/**
+ * A question's fields. Each is either retrieved (from the linked item, through a tool on the tool list)
+ * or typed by someone. Typed values are kept in `Question.typed`; anything not typed is retrieved.
+ */
+export const FIELDS = ["title", "kind", "status", "summary", "results_url", "start", "end"] as const;
+export type Field = (typeof FIELDS)[number];
+export type TypedStatus = { state: QuestionState; label: string };
+/** `value: null` means "explicitly none" (e.g. no end date even though the link gives one). */
+export type TypedValue = { value: string | TypedStatus | null; by: string; at: ISODate };
+export type Typed = Partial<Record<Field, TypedValue>>;
 
 /**
  * Broad status categories, shared by processes and questions.
@@ -57,16 +70,15 @@ export type Fetched = {
   fetch_error?: string;
 };
 
-/** The id of the built-in "custom" tool: a process described by hand, with or without a link. */
+/** The tool id of a process not on the tool list: no link, or a link to a site that isn't registered. Nothing is retrieved. */
 export const CUSTOM_TOOL_ID = "custom";
 
 export type Process = {
   /** Absent for custom processes without a link (a meeting, an unconference…). */
   url?: string;
   tool_id: string;
-  /** For custom processes: what kind of process it is, in the group's words ("meeting"). */
+  /** The item type the tool's URL pattern gives ("pull_request"). Empty for custom processes (no tool). */
   item_type: string;
-  framing?: string;
   fetch_mode: "auto" | "manual";
   fetched?: Fetched;
 };
@@ -76,11 +88,12 @@ export type Question = {
   space_id: string;
   title: string;
   why_it_matters?: string;
-  /** Current category. Follows the process when `status_source` is "process". */
+  /** Current title and category (stored for search and counts), from the typed value or the retrieved one. */
   status: QuestionState;
-  status_source: "process" | "manual";
-  /** The hand-set label (manual source only). */
+  /** The typed status label, when the status is typed. */
   status_label?: string;
+  /** Typed field values. A field not in here is retrieved (see fields.ts). */
+  typed: Typed;
   process?: Process;
   /** Set when removed (spam, mistake, test). Hidden from lists, restorable; never deleted. */
   removed_at?: ISODate;
@@ -102,8 +115,6 @@ export type Tool = {
   url_patterns: { pattern: string; item_type: string }[];
   fetch_mode: "auto" | "manual";
   adapter?: string;
-  /** Raw state label → category. For auto tools, used as a fallback when the item can't be fetched. */
-  state_map?: Record<string, NormalizedState>;
   added_by_question_id?: string;
   enabled: boolean;
 };

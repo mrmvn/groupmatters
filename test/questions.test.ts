@@ -9,6 +9,7 @@ import * as P from "../src/processes.ts";
 import * as repo from "../src/repo.ts";
 import { MIGRATIONS, openDb } from "../src/db.ts";
 import { setStatusLabels } from "../src/rules.ts";
+import { fieldViews } from "../src/fields.ts";
 import { tick } from "../src/scheduler.ts";
 import { list } from "../src/search.ts";
 
@@ -16,18 +17,20 @@ const openPr = () => ({ body: fixture("github_pr_open.json") });
 const mergedPr = () => ({ body: fixture("github_pr_merged.json") });
 const actions = (ctx: any, spaceId: string, qid: string) => repo.listActivity(ctx.db, spaceId, { questionId: qid }).map((e) => e.action);
 
-test("create: title required; no process → Not started, set by hand; logged", async () => {
+const src = (q: any, f: string) => fieldViews(q)[f as keyof ReturnType<typeof fieldViews>].source;
+
+test("create: title required; no process → everything typed, Not started; logged", async () => {
   const { ctx } = makeCtx();
   const { space } = makeSpace(ctx);
   await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "  " }), /Title is required/);
   const q = await Q.create(ctx, space, "Ana", { title: "Should we?", why_it_matters: "Because" });
   assert.equal(q.status, "not_started");
-  assert.equal(q.status_source, "manual");
   assert.equal(q.status_label, "Not started");
+  assert.deepEqual([src(q, "title"), src(q, "status"), q.typed.title?.by], ["typed", "typed", "Ana"]);
   assert.deepEqual(actions(ctx, space.id, q.id), ["question.created"]);
 });
 
-test("create with a hand-set status, by label or category; unknown labels refused", async () => {
+test("create with a typed status, by label or category; unknown labels refused", async () => {
   const { ctx } = makeCtx();
   const { space } = makeSpace(ctx);
   const a = await Q.create(ctx, space, "Ana", { title: "A", status: { label: "being DISCUSSED" } });
@@ -39,86 +42,100 @@ test("create with a hand-set status, by label or category; unknown labels refuse
   await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "C", status: { state: "unknown" } }), /Choose a status/);
 });
 
-test("a question with a process follows it: GitHub PR open → In progress, merged → Accepted (logged as system)", async () => {
+test("a linked item's fields are retrieved: GitHub PR open → In progress, merged → Accepted (logged as system)", async () => {
   const t = makeCtx({ [GH_PR_API]: openPr() });
   const { space } = makeSpace(t.ctx);
   const preview = await P.previewUrl(t.ctx, space, GH_PR);
   assert.ok(preview.matched && preview.title, "title for pre-fill");
   const q = await Q.create(t.ctx, space, "Ana", { title: preview.matched ? preview.title! : "x", process_url: GH_PR });
-  assert.equal(q.status_source, "process");
+  assert.deepEqual([src(q, "title"), src(q, "kind"), src(q, "status"), src(q, "start")], ["retrieved", "retrieved", "retrieved", "retrieved"], "same title as retrieved: not typed");
   assert.equal(q.status, "open");
   assert.equal(q.status_label, undefined);
+  assert.equal(fieldViews(q).status.as, "open", "the platform's word");
 
   t.routes[GH_PR_API] = mergedPr();
   t.advance(16 * 60_000);
   await tick(t.ctx);
   const r = Q.load(t.ctx, space, q.id);
   assert.equal(r.status, "accepted");
+  assert.equal(r.title, fixture("github_pr_merged.json").title, "a retrieved title follows the item");
   const ev = repo.listActivity(t.ctx.db, space.id, { questionId: q.id }).find((e) => e.action === "question.status_changed")!;
   assert.equal(ev.actor, "system");
-  assert.deepEqual(ev.data, { from: "open", to: "accepted", source: "process" });
+  assert.deepEqual(ev.data, { from: "open", to: "accepted", source: "retrieved" });
 });
 
-test("set by hand stops following; switching back copies the process state", async () => {
+test("a title rewritten at creation is typed, and stays when the item's title changes", async () => {
+  const t = makeCtx({ [GH_PR_API]: openPr() });
+  const { space } = makeSpace(t.ctx);
+  const q = await Q.create(t.ctx, space, "Ana", { title: "Should CI upgrade upload-artifact?", process_url: GH_PR });
+  assert.equal(src(q, "title"), "typed");
+  assert.equal(fieldViews(q).title.retrieved, fixture("github_pr_open.json").title);
+  Q.updateFields(t.ctx, space, q, "Ben", { use_retrieved: ["title"] });
+  assert.equal(Q.load(t.ctx, space, q.id).title, fixture("github_pr_open.json").title);
+});
+
+test("typing a value wins over the retrieved one; use_retrieved goes back; logged with before/after", async () => {
   const t = makeCtx({ [GH_PR_API]: openPr() });
   const { space } = makeSpace(t.ctx);
   let q = await Q.create(t.ctx, space, "Ana", { title: "Q", process_url: GH_PR });
-  Q.setStatus(t.ctx, space, q, "Ben", { source: "manual", label: "Agreed", note: "Agreed at the meeting already" });
+  Q.updateFields(t.ctx, space, q, "Ben", { set: { status: { label: "Agreed" }, summary: "Agreed at the meeting" }, note: "Agreed at the meeting already" });
   t.routes[GH_PR_API] = { body: { ...fixture("github_pr_closed_unmerged.json") } };
   t.advance(16 * 60_000);
   await tick(t.ctx);
   q = Q.load(t.ctx, space, q.id);
-  assert.equal(q.status, "accepted", "hand-set status wins");
-  assert.equal(q.process?.fetched?.state, "rejected", "the process is still refreshed");
-  Q.setStatus(t.ctx, space, q, "Ben", { source: "process" });
+  assert.equal(q.status, "accepted", "typed status wins");
+  assert.deepEqual(fieldViews(q).status.retrieved, { state: "rejected" }, "the retrieved one is still there");
+  const log = repo.listActivity(t.ctx.db, space.id, { questionId: q.id }).find((e) => e.action === "question.fields_changed")!;
+  assert.deepEqual((log.data.fields as any).status, { before: { source: "retrieved" }, after: { source: "typed", value: { state: "accepted", label: "Agreed" } } });
+  assert.equal(log.data.note, "Agreed at the meeting already");
+  Q.updateFields(t.ctx, space, q, "Ben", { use_retrieved: ["status"] });
   assert.equal(Q.load(t.ctx, space, q.id).status, "rejected");
   const noProcess = await Q.create(t.ctx, space, "Ana", { title: "No process" });
-  assert.throws(() => Q.setStatus(t.ctx, space, noProcess, "Ana", { source: "process" }), /Link a process first/);
+  assert.throws(() => Q.updateFields(t.ctx, space, noProcess, "Ana", { use_retrieved: ["status"] }), /can't be retrieved/);
+  assert.throws(() => Q.updateFields(t.ctx, space, noProcess, "Ana", { set: { kind: "Meeting" } }), /Link a process first/);
+  assert.throws(() => Q.updateFields(t.ctx, space, noProcess, "Ana", { set: { colour: "red" } as any }), /Unknown field/);
 });
 
-test("removing the process keeps the status, now set by hand with the space's label", async () => {
+test("removing the process keeps the title and status, now typed; the typed kind goes", async () => {
   const t = makeCtx({ [GH_PR_API]: openPr() });
   const { space } = makeSpace(t.ctx);
   const q = await Q.create(t.ctx, space, "Ana", { title: "Q", process_url: GH_PR });
-  P.removeProcess(t.ctx, space, q, "Ana");
+  Q.updateFields(t.ctx, space, q, "Ana", { set: { kind: "Code change", end: "2099-02-01" } });
+  P.removeProcess(t.ctx, space, Q.load(t.ctx, space, q.id), "Ana");
   const r = Q.load(t.ctx, space, q.id);
   assert.equal(r.process, undefined);
-  assert.equal(r.status, "open");
-  assert.equal(r.status_source, "manual");
-  assert.equal(r.status_label, "Being discussed");
+  assert.deepEqual([r.status, r.status_label, src(r, "status"), src(r, "title")], ["open", "Being discussed", "typed", "typed"]);
+  assert.equal(r.typed.kind, undefined);
+  assert.equal(r.typed.end?.value, "2099-02-01", "typed dates stay");
 });
 
-test("attaching a process to a hand-set question makes it follow the process", async () => {
+test("linking a retrievable item makes the status follow it; a kind typed with the old process goes", async () => {
   const t = makeCtx({ [GH_PR_API]: mergedPr() });
   const { space } = makeSpace(t.ctx);
-  const q = await Q.create(t.ctx, space, "Ana", { title: "Q", status: { label: "Being discussed" } });
+  const q = await Q.create(t.ctx, space, "Ana", { title: "Q", status: { label: "Being discussed" }, process: { kind: "Meeting" } });
+  assert.equal(q.typed.kind?.value, "Meeting");
   const r = await Q.attachProcess(t.ctx, space, q, "Ben", { url: GH_PR });
-  assert.equal(r.status_source, "process");
-  assert.equal(r.status, "accepted");
+  assert.deepEqual([src(r, "status"), r.status, r.typed.kind, src(r, "title")], ["retrieved", "accepted", undefined, "typed"]);
 });
 
-test("custom process: kind required, link optional (https only), state from the space's labels; the question follows", async () => {
+test("custom process: no link needs a kind; any https link is accepted; its fields are typed", async () => {
   const { ctx } = makeCtx();
   const { space } = makeSpace(ctx);
-  await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "Q", process: { custom: {} } }), /Kind of process is required/);
-  await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "Q", process: { custom: { kind: "Meeting", url: "http://x.org" } } }), /https/);
-  const q = await Q.create(ctx, space, "Ana", {
-    title: "Budget?",
-    process: { custom: { kind: "General assembly", title: "Spring assembly", when: "2026-03-01T18:00:00Z" }, framing: "Members present vote" },
-  });
-  assert.equal(q.process?.tool_id, "custom");
-  assert.equal(q.process?.url, undefined);
-  assert.equal(q.process?.item_type, "General assembly");
-  assert.equal(q.process?.fetched?.title, "Spring assembly");
-  assert.equal(q.process?.fetched?.dates?.opens_at, "2026-03-01T18:00:00.000Z");
-  assert.equal(q.status, "not_started");
-  P.manualUpdate(ctx, q, "Ben", { state: "accepted", raw_state: "Agreed", outcome_summary: "41 for, 3 against" });
-  const r = Q.load(ctx, space, q.id);
-  assert.equal(r.status, "accepted");
-  assert.equal(r.process?.fetched?.dates?.opens_at, "2026-03-01T18:00:00.000Z", "date kept on update");
+  await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "Q", process: { custom: {} } }), /kind of process/);
+  await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "Q", process: { kind: "Meeting", url: "http://x.org" } }), /https/);
+  const q = await Q.create(ctx, space, "Ana", { title: "Budget?", process: { kind: "General assembly" } });
+  assert.deepEqual([q.process?.tool_id, q.process?.url, q.process?.item_type, q.typed.kind?.value], ["custom", undefined, "", "General assembly"]);
+  const v = fieldViews(q);
+  assert.deepEqual([v.status.source, v.status.retrievable, v.kind.retrievable], ["typed", false, false]);
+  Q.updateFields(ctx, space, q, "Ben", { set: { status: { label: "Agreed" }, summary: "41 for, 3 against" } });
+  assert.equal(Q.load(ctx, space, q.id).status, "accepted");
+  // A site that isn't on the tool list: accepted, nothing retrieved.
+  const other = await Q.create(ctx, space, "Ana", { title: "Forum thread", process_url: "https://forum.example.org/t/42" });
+  assert.deepEqual([other.process?.tool_id, other.process?.url, src(other, "title")], ["custom", "https://forum.example.org/t/42", "typed"]);
+  await assert.rejects(() => Q.create(ctx, space, "Ana", { process_url: "https://forum.example.org/t/43" }), /Title is required/, "nothing retrieved: a title is needed");
 });
 
-test("manual tool: page title pre-filled; state set by anyone; question follows", async () => {
+test("tool updated by hand: kind and page title retrieved; status typed", async () => {
   const url = "https://www.kialo.com/should-we-x-1234";
   const t = makeCtx({ [url]: { body: `<html><head><meta property="og:title" content="Should we do X? &amp; why"><title>Kialo</title></head></html>`, headers: { "content-type": "text/html" } } });
   const { space } = makeSpace(t.ctx);
@@ -126,24 +143,39 @@ test("manual tool: page title pre-filled; state set by anyone; question follows"
   assert.ok(preview.matched);
   assert.equal(preview.matched && preview.title, "Should we do X? & why");
   assert.equal(preview.matched && preview.fetch_mode, "manual");
-  const q = await Q.create(t.ctx, space, "Ana", { title: "X?", process_url: url });
-  assert.equal(q.process?.fetched?.title, "Should we do X? & why");
-  assert.throws(() => P.manualUpdate(t.ctx, q, "Ben", { state: "unknown" }), /Choose a state/);
-  P.manualUpdate(t.ctx, q, "Ben", { state: "open", raw_state: "Open" });
+  const q = await Q.create(t.ctx, space, "Ana", { process_url: url });
+  assert.equal(q.title, "Should we do X? & why", "no title given: the retrieved one");
+  const v = fieldViews(q);
+  assert.deepEqual([v.title.source, v.kind.source, v.kind.value, v.status.source, v.status.retrievable], ["retrieved", "retrieved", "discussion", "typed", false]);
+  Q.updateFields(t.ctx, space, q, "Ben", { set: { status: { label: "Being discussed" } } });
   assert.equal(Q.load(t.ctx, space, q.id).status, "open");
 });
 
-test("private Loomio poll: attached, but updated by hand", async () => {
+test("private Loomio poll: attached; only kind and title can be retrieved, status typed", async () => {
   const url = "https://www.loomio.com/p/Priv4te1/secret";
   const t = makeCtx({ "https://www.loomio.com/api/v1/polls/Priv4te1": { status: 403, body: { error: "Not authorized" } } });
   const { space } = makeSpace(t.ctx);
   const q = await Q.create(t.ctx, space, "Ana", { title: "Q", process_url: url });
   assert.equal(q.process?.fetch_mode, "manual");
   assert.match(q.process?.fetched?.fetch_error ?? "", /isn't public/);
-  P.manualUpdate(t.ctx, q, "Ana", { state: "accepted", raw_state: "Closed: passed" });
+  assert.equal(src(q, "status"), "typed");
+  Q.updateFields(t.ctx, space, q, "Ana", { set: { status: { label: "Agreed" } } });
+  assert.equal(Q.load(t.ctx, space, q.id).status, "accepted");
+});
+
+test("an item that becomes private: its status is kept, now typed", async () => {
+  const api = "https://www.loomio.com/api/v1/polls/irvWwUHt";
+  const t = makeCtx({ [api]: { body: fixture("loomio_poll_closed.json") } });
+  const { space } = makeSpace(t.ctx);
+  const q = await Q.create(t.ctx, space, "Ana", { title: "Q", process_url: "https://www.loomio.com/p/irvWwUHt" });
+  assert.equal(src(q, "status"), "retrieved");
+  t.routes[api] = { status: 403, body: { error: "Not authorized" } };
+  t.advance(25 * 60 * 60_000);
+  await P.refreshProcess(t.ctx, q.id);
   const r = Q.load(t.ctx, space, q.id);
-  assert.equal(r.status, "accepted");
-  assert.equal(r.process?.fetched?.fetch_error, undefined);
+  assert.equal(r.process?.fetch_mode, "manual");
+  assert.deepEqual([src(r, "status"), r.status], ["typed", q.status]);
+  assert.ok(r.status_label, "with the space's label");
 });
 
 test("refresh errors keep previous values and back off; ETag 304 keeps state", async () => {
@@ -180,13 +212,13 @@ test("an item that becomes private switches the process to updating by hand", as
   assert.ok(actions(t.ctx, space.id, q.id).includes("process.now_manual"));
 });
 
-test("unregistered URL is refused with a tool suggestion", async () => {
+test("unregistered URL: previewed with a tool suggestion, accepted as a custom process", async () => {
   const t = makeCtx();
   const { space } = makeSpace(t.ctx);
-  await assert.rejects(
-    () => Q.create(t.ctx, space, "Ana", { title: "Q", process_url: "https://forum.example.org/t/123" }),
-    (e: any) => e.code === "unknown_tool" && e.details.suggestion.pattern === "https://forum.example.org/*",
-  );
+  const preview = await P.previewUrl(t.ctx, space, "https://forum.example.org/t/123");
+  assert.deepEqual(preview, { matched: false, suggestion: { name: "forum.example.org", pattern: "https://forum.example.org/*" } });
+  const q = await Q.create(t.ctx, space, "Ana", { title: "Q", process_url: "https://forum.example.org/t/123" });
+  assert.equal(q.process?.tool_id, "custom");
   await assert.rejects(() => Q.create(t.ctx, space, "Ana", { title: "Q", process_url: "http://github.com/a/b/pull/1" }), /https/);
 });
 
@@ -202,7 +234,7 @@ test("status labels: editable per space; need a Not started label; no duplicates
   ]);
   const q = await Q.create(ctx, space, "Ana", { title: "Q" });
   assert.equal(q.status_label, "To do");
-  Q.setStatus(ctx, space, q, "Ana", { label: "Waiting for budget" });
+  Q.updateFields(ctx, space, q, "Ana", { set: { status: { label: "Waiting for budget" } } });
   assert.equal(Q.load(ctx, space, q.id).status, "open");
 });
 
@@ -271,14 +303,17 @@ test("migration from the v1 decision model: statuses, relations, tools; backup k
     v1.close();
 
     const db = openDb(path);
-    const q = (id: string) => db.prepare("SELECT status, status_source, status_label FROM questions WHERE id = ?").get(id) as any;
-    assert.deepEqual({ ...q("pool") }, { status: "not_started", status_source: "manual", status_label: "Not started" });
-    assert.deepEqual({ ...q("act") }, { status: "open", status_source: "manual", status_label: "Being discussed" });
+    const q = (id: string) => {
+      const r = repo.getQuestion(db, "s", id)!;
+      return { status: r.status, source: fieldViews(r).status.source, label: r.status_label };
+    };
+    assert.deepEqual(q("pool"), { status: "not_started", source: "typed", label: "Not started" });
+    assert.deepEqual(q("act"), { status: "open", source: "typed", label: "Being discussed" });
     assert.equal(q("dor").status, "not_started");
-    assert.deepEqual({ ...q("res") }, { status: "rejected", status_source: "manual", status_label: "Not agreed" });
+    assert.deepEqual(q("res"), { status: "rejected", source: "typed", label: "Not agreed" });
     assert.equal(q("res2").status, "concluded");
     assert.equal(q("dup").status, "withdrawn");
-    assert.deepEqual({ ...q("lp") }, { status: "open", status_source: "process", status_label: null });
+    assert.deepEqual(q("lp"), { status: "open", source: "retrieved", label: undefined });
     assert.deepEqual(repo.relationsOf(db, "pool").map((r) => [r.from_id, r.to_id, r.kind]).sort(), [["act", "pool", "related"], ["dup", "pool", "duplicate"]]);
     assert.equal((db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'objections'").get() as any).n, 0);
     assert.deepEqual(JSON.parse((db.prepare("SELECT settings_json FROM spaces").get() as any).settings_json).status_labels[0], { label: "Not started", state: "not_started" });
@@ -355,4 +390,38 @@ test("remove and restore: hidden from lists and checks, read-only, not refreshed
   assert.equal(Q.load(t.ctx, space, q.id).removed_at, undefined);
   assert.deepEqual(actions(t.ctx, space.id, q.id).filter((a) => a.startsWith("question.r")), ["question.restored", "question.removed"], "newest first");
   assert.throws(() => t.ctx.db.prepare("DELETE FROM questions WHERE id = ?").run(q.id), /never deleted/);
+});
+
+test("create with typed summary, results and dates; a custom link or a kind alone", async () => {
+  const { ctx } = makeCtx();
+  const { space } = makeSpace(ctx);
+  const q = await Q.create(ctx, space, "Ana", {
+    title: "Which license?",
+    process: { kind: "Meeting" },
+    status: { label: "Agreed" },
+    fields: { summary: "CC BY", results_url: "Adopted 9–1", start: "2026-03-01", end: "", unknown: undefined },
+  }).catch((e) => e);
+  assert.match(String(q.message), /Can't set "unknown"/);
+  const ok = await Q.create(ctx, space, "Ana", {
+    title: "Which license?",
+    process: { kind: "Meeting" },
+    status: { label: "Agreed" },
+    fields: { summary: "CC BY", results_url: "Adopted 9–1", start: "2026-03-01", end: "" },
+  });
+  const f = fieldViews(ok);
+  assert.deepEqual([f.kind.value, f.summary.value, f.results_url.value, f.start.value, f.end.value], ["Meeting", "CC BY", "Adopted 9–1", "2026-03-01", undefined]);
+  assert.equal(ok.status, "accepted");
+  await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "B", fields: { start: "2026-03-05", end: "2026-03-01" } }), /end date is before/);
+  await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "C", fields: { results_url: "http://example.org/x" } }), /https/);
+});
+
+test("results can be a link or plain words; a non-https link is refused", async () => {
+  const { ctx } = makeCtx();
+  const { space } = makeSpace(ctx);
+  const q = await Q.create(ctx, space, "Ana", { title: "Results?" });
+  Q.updateFields(ctx, space, q, "Ana", { set: { results_url: "Adopted 9–1" } });
+  assert.equal(fieldViews(q).results_url.value, "Adopted 9–1");
+  Q.updateFields(ctx, space, q, "Ana", { set: { results_url: "https://example.org/results" } });
+  assert.equal(fieldViews(q).results_url.value, "https://example.org/results");
+  assert.throws(() => Q.updateFields(ctx, space, q, "Ana", { set: { results_url: "ftp://example.org/x" } }), /https/);
 });

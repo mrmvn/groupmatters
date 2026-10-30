@@ -214,3 +214,60 @@ body.dropping::after {
   background: color-mix(in srgb, var(--panel) 85%, transparent);
   font-size: 1.4rem; font-weight: 600; color: var(--accent);
 }
+
+/* Timeline */
+.timeline { margin-top: 8px; }
+.tl-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 4px 0 10px; color: var(--muted); }
+.tl-key { display: inline-block; width: 18px; height: 10px; vertical-align: middle; }
+.tl-key.ongoing { background: var(--st-open); border: 1px solid var(--st-open-ink); border-right: 2px dashed var(--st-open-ink); border-radius: 5px 0 0 5px; }
+.tl-key.planned { border: 1px dashed var(--muted); border-left: none; border-radius: 0 5px 5px 0; }
+.tl-key.today { width: 0; height: 14px; border-left: 2px solid var(--accent); }
+.tl-scroll { overflow-x: auto; }
+.tl-chart { --tl-label: 15rem; min-width: 640px; }
+.tl-row { display: grid; grid-template-columns: var(--tl-label) 1fr; align-items: center; }
+.tl-rows { list-style: none; margin: 0; padding: 0; }
+.tl-rows .tl-row:hover { background: var(--panel); }
+.tl-body { position: relative; }
+.tl-label { min-width: 0; padding-right: 10px; font-size: .9rem; }
+.tl-label a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-track { position: relative; height: 26px; }
+.tl-axis .tl-track { height: 1.7em; }
+.tl-tick { position: absolute; top: 0; padding-left: 4px; font-size: .75rem; color: var(--muted); white-space: nowrap; border-left: 1px solid var(--line); }
+.tl-grid { position: absolute; top: 0; bottom: 0; left: var(--tl-label); right: 0; pointer-events: none; }
+.tl-gridline { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); opacity: .6; }
+.tl-today { position: absolute; top: 0; bottom: 0; border-left: 2px solid var(--accent); }
+.tl-bar, .tl-planned { position: absolute; top: 6px; height: 14px; }
+.tl-bar { min-width: 8px; border-radius: 7px; border: 1px solid currentColor; }
+.tl-bar.ongoing { border-radius: 7px 0 0 7px; border-right: 2px dashed currentColor; }
+.tl-bar.scheduled { background: transparent; border-style: dashed; border-radius: 7px; min-width: 12px; }
+.tl-bar.unknown-end { width: 36px; border-right: none; border-radius: 7px 0 0 7px; background-image: linear-gradient(to right, transparent 30%, var(--bg)); }
+.tl-planned { border: 1px dashed var(--muted); border-left: none; border-radius: 0 7px 7px 0; }
+.tl-key.unknown-end { background: var(--st-concluded); background-image: linear-gradient(to right, transparent 30%, var(--bg)); border: 1px solid var(--st-concluded-ink); border-right: none; border-radius: 5px 0 0 5px; }
+.dates-field { border: 0; padding: 0; margin: 0 0 10px; }
+.dates-field legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+.date-choice { display: block; margin: 4px 0; }
+.date-choice input[type=date], .date-choice input[type=time] { width: auto; display: inline-block; }
+@media (max-width: 560px) { .tl-chart { --tl-label: 9rem; } }
+
+/* Fields: retrieved or typed */
+.field-cell { display: inline; }
+.q-head .field-cell { display: block; }
+.q-head .field-cell h1 { display: inline; margin-right: 8px; }
+.field-meta { white-space: nowrap; }
+.src { display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 4px; font-size: .75rem; letter-spacing: .02em; vertical-align: middle; }
+.src-retrieved { color: var(--accent); border: 1px solid var(--accent); }
+.src-typed { color: var(--warn); border: 1px dashed var(--warn); }
+.src-empty { color: var(--muted); border: 1px dotted var(--line); }
+.edit-field { margin-left: 4px; font-size: .9rem; }
+.field-retrieved { font-size: .85rem; color: var(--muted); margin-top: 2px; }
+.field-editor { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.field-editor input[type=text], .field-editor input[type=url] { min-width: 16rem; }
+.field-editor .row { margin: 0; }
+.field-list dd { margin-bottom: 4px; }
+[title="Double-click to type a value"] { cursor: text; }
+
+
+/* Details shown while creating a question */
+.create-fields { margin: 10px 0; }
+.create-fields .field { margin: 8px 0; }
+.create-fields input[type=text], .create-fields select { width: 100%; max-width: 32rem; }

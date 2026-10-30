@@ -135,7 +135,98 @@ export const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   (db) => addSeedTool(db, "decidim"),
   // v6: tools say what they're useful for. Built-in tools and Consul instances get the seed text.
   (db) => addToolDescriptions(db),
+  // v7: questions have one start and one end date (from the process, by hand, or none); process framing is gone.
+  (db) => questionDates(db),
+  // v8: every field is retrieved or typed (Question.typed); tools no longer have their own state words.
+  (db) => typedFields(db),
 ];
+
+/**
+ * Migration 8. Fields become "retrieved or typed", per field (see fields.ts):
+ * - title: typed unless it's exactly the linked item's retrieved title;
+ * - status: typed when it was set by hand, or followed a process updated by hand (its hand-set word becomes the label);
+ * - kind: a custom process' kind becomes a typed kind;
+ * - summary and results link set by hand on a process become typed;
+ * - start/end typed or "none" carry over.
+ * Then the per-field source columns and tools' state words are dropped.
+ */
+function typedFields(db: DatabaseSync) {
+  db.exec("ALTER TABLE questions ADD COLUMN typed_json TEXT NOT NULL DEFAULT '{}'");
+  const labels = new Map((db.prepare("SELECT id, settings_json FROM spaces").all() as Row[]).map((s) => [s.id, JSON.parse(s.settings_json).status_labels ?? []]));
+  const labelOf = (spaceId: string, state: string) => labels.get(spaceId)?.find((l: any) => l.state === state)?.label ?? state;
+  const lastStatusActor = db.prepare("SELECT actor, at FROM activity WHERE question_id = ? AND action = 'question.status_changed' AND actor <> 'system' ORDER BY id DESC LIMIT 1");
+  const setTyped = db.prepare("UPDATE questions SET typed_json = ?, status_label = ? WHERE id = ?");
+  const setProc = db.prepare("UPDATE processes SET item_type = ?, fetched_json = ? WHERE id = ?");
+  for (const q of db.prepare("SELECT * FROM questions").all() as Row[]) {
+    const p = db.prepare("SELECT * FROM processes WHERE question_id = ?").get(q.id) as Row | undefined;
+    const f = p?.fetched_json ? JSON.parse(p.fetched_json) : undefined;
+    const custom = p?.tool_id === "custom";
+    const handProc = p && p.fetch_mode !== "auto";
+    const typed: Record<string, unknown> = {};
+    const who = (lastStatusActor.get(q.id) as Row | undefined) ?? { actor: q.created_by, at: q.last_activity_at };
+    if (!p || custom || f?.title?.trim() !== q.title) typed.title = { value: q.title, by: q.created_by, at: q.created_at };
+    let label: string | null = q.status_label ?? null;
+    if (q.status_source === "manual" || !p || handProc) {
+      label = q.status_source === "manual" ? (q.status_label ?? labelOf(q.space_id, q.status)) : (f?.raw_state ?? labelOf(q.space_id, q.status));
+      typed.status = { value: { state: q.status, label }, by: who.actor, at: who.at };
+    }
+    if (custom && p.item_type) typed.kind = { value: p.item_type, by: q.created_by, at: p.created_at };
+    if (handProc && f) {
+      if (f.outcome_summary) typed.summary = { value: f.outcome_summary, by: who.actor, at: f.fetched_at ?? who.at };
+      if (f.extra?.results_url) typed.results_url = { value: f.extra.results_url, by: who.actor, at: f.fetched_at ?? who.at };
+      delete f.outcome_summary;
+      delete f.raw_state;
+      if (f.extra) delete f.extra.results_url;
+      if (f.extra && !Object.keys(f.extra).length) delete f.extra;
+      f.state = "unknown";
+      f.terminal = false;
+    }
+    for (const k of ["start", "end"]) {
+      const src = q[`${k}_source`];
+      if (src === "manual" && q[`${k}_date`]) typed[k] = { value: q[`${k}_date`], by: who.actor, at: who.at };
+      else if (src === "none" && p && !custom) typed[k] = { value: null, by: who.actor, at: who.at }; // only meaningful when a date could be retrieved
+    }
+    setTyped.run(JSON.stringify(typed), typed.status ? label : null, q.id);
+    if (p) setProc.run(custom ? "" : p.item_type, f ? JSON.stringify(f) : null, p.id);
+  }
+  db.exec(`
+  ALTER TABLE questions DROP COLUMN status_source;
+  ALTER TABLE questions DROP COLUMN start_source;
+  ALTER TABLE questions DROP COLUMN start_date;
+  ALTER TABLE questions DROP COLUMN end_source;
+  ALTER TABLE questions DROP COLUMN end_date;
+  ALTER TABLE tools DROP COLUMN state_map_json;
+  `);
+}
+
+/**
+ * Migration 7. Dates move to the question: each follows the process by default, or is typed by hand.
+ * Dates typed on processes updated by hand (custom "when", hand-set start/end) become the question's
+ * hand-set dates. Process framing is dropped (it stays in the activity log).
+ */
+function questionDates(db: DatabaseSync) {
+  db.exec(`
+  ALTER TABLE questions ADD COLUMN start_source TEXT NOT NULL DEFAULT 'process' CHECK (start_source IN ('process','manual','none'));
+  ALTER TABLE questions ADD COLUMN start_date TEXT;
+  ALTER TABLE questions ADD COLUMN end_source TEXT NOT NULL DEFAULT 'process' CHECK (end_source IN ('process','manual','none'));
+  ALTER TABLE questions ADD COLUMN end_date TEXT;
+  `);
+  const setStart = db.prepare("UPDATE questions SET start_source = 'manual', start_date = ? WHERE id = ?");
+  const setEnd = db.prepare("UPDATE questions SET end_source = 'manual', end_date = ? WHERE id = ?");
+  const setFetched = db.prepare("UPDATE processes SET fetched_json = ? WHERE id = ?");
+  for (const p of db.prepare("SELECT id, question_id, fetched_json FROM processes WHERE fetch_mode = 'manual' AND fetched_json IS NOT NULL").all() as Row[]) {
+    const f = JSON.parse(p.fetched_json);
+    const d = f.dates;
+    if (!d || (!d.opens_at && !d.resolved_at)) continue;
+    if (d.opens_at) setStart.run(d.opens_at, p.question_id);
+    if (d.resolved_at) setEnd.run(d.resolved_at, p.question_id);
+    delete d.opens_at;
+    delete d.resolved_at;
+    if (!Object.keys(d).length) delete f.dates;
+    setFetched.run(JSON.stringify(f), p.id);
+  }
+  db.exec("ALTER TABLE processes DROP COLUMN framing");
+}
 
 function addToolDescriptions(db: DatabaseSync) {
   db.exec("ALTER TABLE tools ADD COLUMN description TEXT");
@@ -154,8 +245,8 @@ function addSeedTool(db: DatabaseSync, id: string) {
     if (db.prepare("SELECT 1 FROM tools WHERE space_id = ? AND id = ?").get(s.id, id)) continue;
     const pos = (db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM tools WHERE space_id = ?").get(s.id) as Row).p;
     db.prepare(
-      "INSERT INTO tools (space_id, id, name, url_patterns_json, fetch_mode, adapter, state_map_json, enabled, position) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
-    ).run(s.id, id, t.name, JSON.stringify(t.url_patterns), t.fetch_mode, t.adapter ?? null, t.state_map ? JSON.stringify(t.state_map) : null, pos);
+      "INSERT INTO tools (space_id, id, name, url_patterns_json, fetch_mode, adapter, enabled, position) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+    ).run(s.id, id, t.name, JSON.stringify(t.url_patterns), t.fetch_mode, t.adapter ?? null, pos);
     if (hasDescription && t.description) db.prepare("UPDATE tools SET description = ? WHERE space_id = ? AND id = ?").run(t.description, s.id, id);
   }
 }

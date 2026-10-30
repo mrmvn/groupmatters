@@ -1,14 +1,14 @@
 // The Rules page's actions: the tool list and the space's status labels. Direct actions by anyone
 // with edit access, logged in the activity log (no proposals or votes).
 import type { Ctx } from "./ctx.ts";
-import type { NormalizedState, Space, StatusLabel, Tool } from "./types.ts";
+import type { Space, StatusLabel, Tool } from "./types.ts";
 import { CUSTOM_TOOL_ID, isQuestionState } from "./types.ts";
 import * as repo from "./repo.ts";
-import { INSTANCE_KINDS, validatePattern, validateStateMap } from "./tools.ts";
+import { INSTANCE_KINDS, matchUrl, validatePattern } from "./tools.ts";
 import { tx } from "./db.ts";
 import { bad, requireText, slugify } from "./util.ts";
 
-type ToolInput = { name: string; description?: string; url_patterns: { pattern: string; item_type: string }[]; state_map?: Record<string, NormalizedState> };
+type ToolInput = { name: string; description?: string; url_patterns: { pattern: string; item_type: string }[] };
 
 /** "What is it useful for?": optional plain text. Empty means none. */
 export function validateDescription(d: unknown): string | undefined {
@@ -28,8 +28,7 @@ export function validateToolInput(t: any): ToolInput {
     pattern: validatePattern(p?.pattern),
     item_type: slugify(requireText(p?.item_type, "Item type", 40)).replace(/-/g, "_"),
   }));
-  const state_map = validateStateMap(t.state_map) ?? { Open: "open", Closed: "concluded" };
-  return { name, description: validateDescription(t.description), url_patterns, state_map };
+  return { name, description: validateDescription(t.description), url_patterns };
 }
 
 /** `{kind: "consul", base_url, name?}`: an instance of a supported platform, fetched automatically. */
@@ -47,11 +46,30 @@ function instanceToolInput(input: any): Omit<Tool, "id" | "enabled"> {
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) throw bad("That doesn't look like a public web address");
   const name = input.name ? requireText(input.name, "Tool name", 60) : `${kind.name} (${host})`;
   const description = input.description === undefined ? kind.description : validateDescription(input.description);
-  return { name, description, url_patterns: kind.patterns(host), fetch_mode: "auto", adapter: kind.adapter, state_map: kind.state_map };
+  return { name, description, url_patterns: kind.patterns(host), fetch_mode: "auto", adapter: kind.adapter };
 }
 
-/** Add a tool directly: a manual tool (patterns + states), or an instance of a supported platform. */
-export function addToolDirect(ctx: Ctx, space: Space, actor: string, input: any): Tool {
+/**
+ * Links already attached as custom processes (a site that wasn't on the list) that the new tool
+ * recognises become that tool's processes. Their typed values stay. Returns the question ids.
+ */
+function adoptLinks(ctx: Ctx, space: Space, tool: Tool, actor: string): string[] {
+  const now = ctx.now().toISOString();
+  const ids: string[] = [];
+  for (const q of repo.listQuestions(ctx.db, space.id, { removed: "include" })) {
+    const p = q.process;
+    if (!p?.url || p.tool_id !== CUSTOM_TOOL_ID) continue;
+    const m = matchUrl(ctx, [tool], p.url);
+    if (!m) continue;
+    repo.upsertProcess(ctx.db, q, { ...p, tool_id: tool.id, item_type: m.item_type, fetch_mode: m.fetch_mode }, { next_refresh_at: m.fetch_mode === "auto" ? now : null, fail_count: 0 }, now);
+    repo.logEvent(ctx, { space_id: space.id, question_id: q.id, actor, action: "process.tool_matched", data: { tool_id: tool.id, url: p.url } });
+    ids.push(q.id);
+  }
+  return ids;
+}
+
+/** Add a tool directly: a manual tool (patterns), or an instance of a supported platform. `matched`: see adoptLinks. */
+export function addToolDirect(ctx: Ctx, space: Space, actor: string, input: any): { tool: Tool; matched: string[] } {
   const t = input?.kind && input.kind !== "manual" ? instanceToolInput(input) : { ...validateToolInput(input), fetch_mode: "manual" as const };
   return tx(ctx.db, () => {
     const existing = new Set([CUSTOM_TOOL_ID, ...repo.listTools(ctx.db, space.id).map((x) => x.id)]);
@@ -61,13 +79,14 @@ export function addToolDirect(ctx: Ctx, space: Space, actor: string, input: any)
     const tool: Tool = { id, ...t, enabled: true };
     repo.insertTool(ctx.db, space.id, tool);
     repo.logEvent(ctx, { space_id: space.id, actor, action: "tool.added", data: { tool } });
-    return tool;
+    return { tool, matched: adoptLinks(ctx, space, tool, actor) };
   });
 }
 
 /**
- * Edit a tool. Manual tools: name, description, URL patterns, states. Automatic tools are tied to their
- * adapter: only the name and description can change. A missing `description` keeps the current one.
+ * Edit a tool. Manual tools: name, description, URL patterns (links they now recognise are adopted).
+ * Automatic tools are tied to their adapter: only the name and description can change. A missing
+ * `description` keeps the current one.
  */
 export function editToolDirect(ctx: Ctx, space: Space, actor: string, toolId: string, input: any): Tool {
   const tool = repo.getTool(ctx.db, space.id, String(toolId));
@@ -76,12 +95,12 @@ export function editToolDirect(ctx: Ctx, space: Space, actor: string, toolId: st
   const keepDescription = !("description" in input);
   let t: ToolInput;
   if (tool.adapter) {
-    const same = (k: "url_patterns" | "state_map") => !(k in input) || JSON.stringify(input[k]) === JSON.stringify(tool[k]);
-    if (!same("url_patterns") || !same("state_map")) throw bad(`${tool.name} is updated automatically; only its name and description can be edited`);
-    t = { name: requireText(input.name, "Tool name", 60), description: validateDescription(input.description), url_patterns: tool.url_patterns, state_map: tool.state_map };
+    const same = !("url_patterns" in input) || JSON.stringify(input.url_patterns) === JSON.stringify(tool.url_patterns);
+    if (!same) throw bad(`${tool.name} is updated automatically; only its name and description can be edited`);
+    t = { name: requireText(input.name, "Tool name", 60), description: validateDescription(input.description), url_patterns: tool.url_patterns };
   } else t = validateToolInput(input);
   if (keepDescription) t.description = tool.description;
-  const pick = (x: ToolInput) => ({ name: x.name, description: x.description, url_patterns: x.url_patterns, state_map: x.state_map });
+  const pick = (x: ToolInput) => ({ name: x.name, description: x.description, url_patterns: x.url_patterns });
   const before = pick(tool);
   const after = pick(t);
   if (JSON.stringify(before) === JSON.stringify(after)) return tool;
@@ -89,6 +108,7 @@ export function editToolDirect(ctx: Ctx, space: Space, actor: string, toolId: st
   tx(ctx.db, () => {
     repo.updateTool(ctx.db, space.id, updated);
     repo.logEvent(ctx, { space_id: space.id, actor, action: "tool.edited", data: { tool_id: tool.id, before, after } });
+    if (!tool.adapter) adoptLinks(ctx, space, updated, actor);
   });
   return updated;
 }

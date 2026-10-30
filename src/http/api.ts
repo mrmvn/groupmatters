@@ -8,6 +8,8 @@ import * as P from "../processes.ts";
 import { list, similar } from "../search.ts";
 import { addToolDirect, editToolDirect, setStatusLabels, setToolEnabledDirect } from "../rules.ts";
 import { exportSpace } from "../export.ts";
+import { timeline } from "../timeline.ts";
+import { withFields } from "../fields.ts";
 import { adapterIds, getAdapter } from "../adapters/index.ts";
 import { forbidden, HttpError, notFound, bad } from "../util.ts";
 
@@ -32,29 +34,26 @@ function counts(ctx: Ctx, space: Space) {
 
 type Usage = { questions: number; in_progress: number };
 
-/** How many (non-removed) questions use each tool, and how many of those processes are in progress. Custom processes by kind. */
+/**
+ * How many (non-removed) questions use each tool, and how many of them are in progress (status open).
+ * Custom processes (not on the tool list) are counted by their typed kind.
+ */
 function usage(ctx: Ctx, space: Space) {
-  const rows = ctx.db
-    .prepare(
-      `SELECT p.tool_id, p.item_type, COUNT(*) AS n, SUM(CASE WHEN json_extract(p.fetched_json, '$.state') = 'open' THEN 1 ELSE 0 END) AS open
-       FROM processes p JOIN questions q ON q.id = p.question_id
-       WHERE p.space_id = ? AND q.removed_at IS NULL GROUP BY p.tool_id, p.item_type`,
-    )
-    .all(space.id) as { tool_id: string; item_type: string; n: number; open: number }[];
   const tools = new Map<string, Usage>();
-  const custom: ({ kind: string } & Usage)[] = [];
-  for (const r of rows) {
-    if (r.tool_id === CUSTOM_TOOL_ID) {
-      custom.push({ kind: r.item_type, questions: r.n, in_progress: r.open });
-      continue;
-    }
-    const u = tools.get(r.tool_id) ?? { questions: 0, in_progress: 0 };
-    u.questions += r.n;
-    u.in_progress += r.open;
-    tools.set(r.tool_id, u);
+  const custom = new Map<string, Usage>();
+  for (const q of repo.listQuestions(ctx.db, space.id)) {
+    const p = q.process;
+    if (!p) continue;
+    const key = p.tool_id === CUSTOM_TOOL_ID ? (q.typed.kind?.value as string | undefined) : p.tool_id;
+    if (!key) continue;
+    const map = p.tool_id === CUSTOM_TOOL_ID ? custom : tools;
+    const u = map.get(key) ?? { questions: 0, in_progress: 0 };
+    u.questions++;
+    if (q.status === "open") u.in_progress++;
+    map.set(key, u);
   }
-  custom.sort((a, b) => b.questions - a.questions || a.kind.localeCompare(b.kind));
-  return { tools, custom };
+  const customKinds = [...custom].map(([kind, u]) => ({ kind, ...u })).sort((a, b) => b.questions - a.questions || a.kind.localeCompare(b.kind));
+  return { tools, custom: customKinds };
 }
 
 /** Tools as the UI needs them: `fetch_mode` is the effective mode on this server, plus `usage`. */
@@ -80,7 +79,7 @@ function questionDetail(ctx: Ctx, space: Space, id: string) {
       : [];
   });
   return {
-    question: q,
+    question: withFields(q),
     related,
     activity: repo.listActivity(ctx.db, space.id, { questionId: q.id, limit: 200 }),
     tool: q.process && q.process.tool_id !== CUSTOM_TOOL_ID ? repo.getTool(ctx.db, space.id, q.process.tool_id) : undefined,
@@ -114,6 +113,9 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     return { activity: repo.listActivity(ctx.db, space.id, { before, limit: Number(r.query.get("limit")) || 100 }) };
   }
   if (method === "GET" && a === "export" && !id) return exportSpace(ctx, space);
+  if (method === "GET" && a === "timeline" && !id) {
+    return { ...timeline(ctx, space, Object.fromEntries(r.query.entries())), now: ctx.now().toISOString() };
+  }
   if (method === "GET" && a === "similar" && !id) {
     return { similar: similar(ctx, space, r.query.get("title") ?? "", r.query.get("exclude") ?? undefined) };
   }
@@ -127,8 +129,11 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
 
   // ---- tools: added, edited and toggled directly ----
   if (a === "tools") {
-    if (method === "POST" && !id) addToolDirect(ctx, space, actor, r.body);
-    else if (method === "PATCH" && id && !b) editToolDirect(ctx, space, actor, id, r.body);
+    if (method === "POST" && !id) {
+      // Links already in the register that the new tool recognises start being retrieved.
+      const { matched } = addToolDirect(ctx, space, actor, r.body);
+      for (const qid of matched) await P.refreshProcess(ctx, qid);
+    } else if (method === "PATCH" && id && !b) editToolDirect(ctx, space, actor, id, r.body);
     else if (method === "POST" && id && b === "enabled") setToolEnabledDirect(ctx, space, actor, id, r.body?.enabled);
     else throw notFound();
     return { tools: toolsView(ctx, space) };
@@ -164,20 +169,18 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     return questionDetail(ctx, space, id);
   }
 
-  if (b === "status" && !c && method === "PUT") {
-    Q.setStatus(ctx, space, q, actor, r.body);
+  if (b === "fields" && !c && method === "PUT") {
+    Q.updateFields(ctx, space, q, actor, r.body);
     return questionDetail(ctx, space, id);
   }
 
   if (b === "process") {
     if (!c && method === "PUT") await Q.attachProcess(ctx, space, q, actor, r.body);
-    else if (!c && method === "PATCH") P.setFraming(ctx, q, actor, r.body?.framing);
     else if (!c && method === "DELETE") P.removeProcess(ctx, space, q, actor);
     else if (c === "refresh" && method === "POST") {
       const res = await P.refreshProcess(ctx, q.id, { onDemand: true });
       return { ...questionDetail(ctx, space, id), refresh: res };
-    } else if (c === "manual" && method === "POST") P.manualUpdate(ctx, q, actor, r.body);
-    else throw notFound();
+    } else throw notFound();
     return questionDetail(ctx, space, id);
   }
 

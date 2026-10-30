@@ -1,4 +1,4 @@
-# Tools: what can be fetched, and how states map
+# Tools: what can be retrieved, and how states map
 
 Every process state and every question status is in one of six **categories**:
 
@@ -15,7 +15,15 @@ Every process state and every question status is in one of six **categories**:
 
 Each tool on a space's list has an optional **description** ("What is it useful for?"): built-in tools come with one, and anyone with edit access can change it, on any tool. It is shown in the Rules tool list, with how many questions use the tool, and when linking a process.
 
-A question **follows its process** (its status is the process' category) or has a status **set by hand**, from the space's status labels (each label belongs to one category; editable on the Rules page).
+Each of a question's fields (title, kind, status, summary, results link, start, end) is **retrieved** from the linked item or **typed** by someone. A typed value wins until someone chooses "↺ use retrieved". What can be retrieved depends on the tool:
+
+| Link | Retrieved | Typed |
+|---|---|---|
+| From an **automatic tool** (table below) | everything the platform exposes | any field, to override |
+| From a **tool updated by hand** (Kialo, your own tools), or an item that can't be read (private) | kind (from the URL pattern) and the page title | status, summary, results, dates |
+| From a site **not on the tool list**, or **no link** (a meeting…) | nothing | everything (title, kind, status…) |
+
+A typed status uses the space's status labels (each belongs to one category; editable on the Rules page). Adding a site to the tool list later makes its links already in the register join the tool.
 
 ## Per platform
 
@@ -39,18 +47,19 @@ Verified against the live APIs in October 2026, except Metaculus (needs an accou
 | | debate | | ✔ | always In progress (Consul debates don't close) | ✕ | votes for/against, comments |
 | | participatory budget | | ✔ | informing/drafting → Not started · accepting … reviewing ballots → In progress (the phase as the state) · finished → Concluded | ✕ | — |
 | | budget investment | | ✔ | unfeasible → Rejected · budget finished → Concluded · otherwise In progress | ~ latest milestone date | feasibility, price |
-| **Kialo** | discussion | — | ✕ (login wall) | by hand | ✕ | — |
-| **Your own tools** | any page matching the patterns | — | ✔ when the page has an `og:title` / `<title>` | by hand, from the tool's state list | ✕ | — |
-| **Custom process** | a meeting, an unconference… (link optional) | — | typed by hand | by hand, from the space's status labels | ✕ | date ("when") |
+| **Kialo** | discussion | — | ✕ (login wall) | typed | ✕ | — |
+| **Your own tools** | any page matching the patterns | — | ✔ when the page has an `og:title` / `<title>` | typed | ✕ | — |
+| **Not on the list** | any https link, or none (a meeting…) | — | typed | typed | ✕ | — |
 
 ### Notes
 
-- **Private items fall back to updating by hand.** A private Loomio poll or Polis conversation (HTTP 401/403), or a Metaculus link on a server without a token, is still attached; its state is then set by hand from the tool's state list. If an item becomes private later, the process switches to "by hand" and the history says so.
-- **Pass/fail on Loomio.** Loomio has no general "passed" flag. Only polls whose template defines a pass test report one; other closed polls are **Concluded**, with the results and the outcome statement as the summary. Set the question's status by hand if the group reads it as a yes or a no.
-- **Decidim and Consul run on many servers.** Decidim links are recognised on any host (their paths are distinctive); Consul paths are generic (`/proposals/12`), so each instance is added once ("Add a tool" → *A Consul Democracy instance*). Both adapters only call public addresses (DNS checked first), at the instance's own `/api` (Decidim, POST) or `/graphql` (Consul, GET). Instances run different versions: fields an instance doesn't know are dropped and the query retried; Consul's older snake_case schema is tried when camelCase gives nothing. Forks with another schema (e.g. the German "projekt" Consul forks in Munich, Regensburg, Jena) only give a title; set states by hand there.
+- **Private items: kind and title only.** A private Loomio poll or Polis conversation (HTTP 401/403), or a Metaculus link on a server without a token, is still attached; its status and other fields are typed. If an item becomes private later, its status is kept (now typed) and the history says so.
+- **Pass/fail on Loomio.** Loomio has no general "passed" flag. Only polls whose template defines a pass test report one; other closed polls are **Concluded**, with the results and the outcome statement as the summary. Type the question's status if the group reads it as a yes or a no.
+- **Decidim and Consul run on many servers.** Decidim links are recognised on any host (their paths are distinctive); Consul paths are generic (`/proposals/12`), so each instance is added once ("Add a tool" → *A Consul Democracy instance*). Both adapters only call public addresses (DNS checked first), at the instance's own `/api` (Decidim, POST) or `/graphql` (Consul, GET). Instances run different versions: fields an instance doesn't know are dropped and the query retried; Consul's older snake_case schema is tried when camelCase gives nothing. Forks with another schema (e.g. the German "projekt" Consul forks in Munich, Regensburg, Jena) only give a title; type the status there.
 - **Consul has no "accepted" for proposals**: a proposal stays open until an admin retires it with a reason. Winning budget investments aren't exposed by the API either.
 - **Self-hosted Loomio/Polis instances** aren't fetched yet (only loomio.com and pol.is). They could be added the same way as Consul instances.
 - **Title pre-fill for other tools** reads the page's `og:title`, `twitter:title` or `<title>`. It only fetches https pages on public addresses (checked at every redirect, port 443, 512 KB max, 8 s timeout), and ignores generic titles (the site's name, login walls, bot challenges).
+- **Dates.** Retrieved start = when the item opened (or is scheduled); retrieved end = when it ended, else its closing date (a planned end). Each can be typed instead (a day, time optional), or typed as "no date". Without a start date, a question isn't on the timeline.
 - **Refresh rhythm**: in-progress items every 15 minutes, ended items daily, with back-off on errors.
 
 ### Possible next adapters
