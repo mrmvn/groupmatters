@@ -288,6 +288,9 @@ test("migration from the v1 decision model: statuses, relations, tools; backup k
     assert.equal((db.prepare("SELECT fetch_mode FROM tools WHERE id = 'kialo'").get() as any).fetch_mode, "manual");
     assert.ok(existsSync(`${path}.before-v${MIGRATIONS.length}.bak`), "backup written");
     assert.deepEqual({ ...(db.prepare("SELECT fetch_mode, adapter FROM tools WHERE id = 'decidim'").get() as any) }, { fetch_mode: "auto", adapter: "decidim" }, "Decidim added");
+    const desc = (id: string) => (db.prepare("SELECT description FROM tools WHERE id = ?").get(id) as any).description;
+    assert.match(desc("loomio"), /Group decisions/, "seed descriptions filled");
+    assert.match(desc("decidim"), /participation/);
     assert.throws(() => db.prepare("DELETE FROM questions WHERE id = 'pool'").run(), /never deleted/, "trigger recreated");
     assert.equal((db.prepare("PRAGMA foreign_keys").get() as any).foreign_keys, 1);
     db.close();

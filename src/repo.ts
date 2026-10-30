@@ -71,6 +71,7 @@ function rowToTool(r: Row): Tool {
   return {
     id: r.id,
     name: r.name,
+    description: u(r.description),
     url_patterns: j(r.url_patterns_json),
     fetch_mode: r.fetch_mode,
     adapter: u(r.adapter),
@@ -92,12 +93,13 @@ export function getTool(db: DatabaseSync, spaceId: string, id: string): Tool | u
 export function insertTool(db: DatabaseSync, spaceId: string, t: Tool) {
   const pos = (db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM tools WHERE space_id = ?").get(spaceId) as Row).p;
   db.prepare(
-    `INSERT INTO tools (space_id, id, name, url_patterns_json, fetch_mode, adapter, state_map_json, added_by_question_id, enabled, position)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tools (space_id, id, name, description, url_patterns_json, fetch_mode, adapter, state_map_json, added_by_question_id, enabled, position)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     spaceId,
     t.id,
     t.name,
+    t.description ?? null,
     JSON.stringify(t.url_patterns),
     t.fetch_mode,
     t.adapter ?? null,
@@ -109,8 +111,9 @@ export function insertTool(db: DatabaseSync, spaceId: string, t: Tool) {
 }
 
 export function updateTool(db: DatabaseSync, spaceId: string, t: Tool) {
-  db.prepare("UPDATE tools SET name = ?, url_patterns_json = ?, state_map_json = ? WHERE space_id = ? AND id = ?").run(
+  db.prepare("UPDATE tools SET name = ?, description = ?, url_patterns_json = ?, state_map_json = ? WHERE space_id = ? AND id = ?").run(
     t.name,
+    t.description ?? null,
     JSON.stringify(t.url_patterns),
     s(t.state_map),
     spaceId,

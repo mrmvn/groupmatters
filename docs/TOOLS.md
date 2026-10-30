@@ -13,6 +13,8 @@ Every process state and every question status is in one of six **categories**:
 
 (`unknown` only appears on a process that couldn't be read.)
 
+Each tool on a space's list has an optional **description** ("What is it useful for?"): built-in tools come with one, and anyone with edit access can change it, on any tool. It is shown in the Rules tool list, with how many questions use the tool, and when linking a process.
+
 A question **follows its process** (its status is the process' category) or has a status **set by hand**, from the space's status labels (each label belongs to one category; editable on the Rules page).
 
 ## Per platform

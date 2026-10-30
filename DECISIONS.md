@@ -103,3 +103,10 @@ Choices made where the spec says **(decide)** or is silent, with short rationale
 - **Version tolerance.** `tolerantQuery` drops fields reported as `undefinedField` and retries (Decidim 0.27 has no `proposalState`; forks differ). Consul tries snake_case when camelCase yields only id/title.
 - **Mappings.** Decidim custom proposal states have no known meaning: Concluded once answered, In progress before. Meetings and processes follow their dates (processes end at the end of their end day, UTC). Consul proposals are In progress until retired; the retirement reason gives the category.
 - **Drag and drop a link**: dropping a link anywhere (edit link only) fills the home composer; on a question without a process it opens "Link a process" prefilled. Drops into text fields behave normally.
+
+## Tool descriptions and usage (migration 6)
+
+- **"What is it useful for?"** is an optional plain-text `description` on each tool (max 400 characters). Built-in tools ship with one (`SEED_TOOLS`); Consul instances get a default from `INSTANCE_KINDS`. Migration 6 adds the column and fills it for the built-in tools still tied to their adapter, and for Consul instances. Plain text rather than Markdown: it's a one-liner shown in tables and hints.
+- **Every tool is editable now, within limits.** Automatic tools (with an adapter) can change their name and description only; their patterns and states belong to the adapter (sending them unchanged is accepted, changing them is refused). Logged as `tool.edited` with before/after.
+- **Usage counts** are computed on read (no stored counter): questions per tool, excluding removed ones, and how many of those processes are in progress (process state `open`). Custom processes are counted by kind (`item_type`, case-sensitive), returned as `custom_kinds` and reused as suggestions in the custom-process form and the item-type filter.
+- **Hints when linking a process**: the enabled tools' names, folded (`<details>`) with their descriptions, rather than a long always-open list.

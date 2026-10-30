@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { DEFAULT_STATUS_LABELS } from "./types.ts";
-import { SEED_TOOLS } from "./tools.ts";
+import { INSTANCE_KINDS, SEED_TOOLS } from "./tools.ts";
 import { dirname } from "node:path";
 
 // Schema notes (spec §2.6):
@@ -133,16 +133,30 @@ export const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   `ALTER TABLE questions ADD COLUMN removed_at TEXT;`,
   // v5: the Decidim tool joins every space's tool list.
   (db) => addSeedTool(db, "decidim"),
+  // v6: tools say what they're useful for. Built-in tools and Consul instances get the seed text.
+  (db) => addToolDescriptions(db),
 ];
 
+function addToolDescriptions(db: DatabaseSync) {
+  db.exec("ALTER TABLE tools ADD COLUMN description TEXT");
+  const set = db.prepare("UPDATE tools SET description = ? WHERE id = ? AND adapter IS ? AND description IS NULL");
+  for (const t of SEED_TOOLS) if (t.description) set.run(t.description, t.id, t.adapter ?? null);
+  for (const kind of Object.values(INSTANCE_KINDS))
+    db.prepare("UPDATE tools SET description = ? WHERE adapter = ? AND description IS NULL").run(kind.description, kind.adapter);
+}
+
+/** Add a seed tool to every space (for tools added to SEED_TOOLS after spaces were created). */
 function addSeedTool(db: DatabaseSync, id: string) {
   const t = SEED_TOOLS.find((x) => x.id === id)!;
+  // The description column only exists from migration 6 on.
+  const hasDescription = (db.prepare("PRAGMA table_info(tools)").all() as Row[]).some((c) => c.name === "description");
   for (const s of db.prepare("SELECT id FROM spaces").all() as Row[]) {
     if (db.prepare("SELECT 1 FROM tools WHERE space_id = ? AND id = ?").get(s.id, id)) continue;
     const pos = (db.prepare("SELECT COALESCE(MAX(position), 0) + 1 AS p FROM tools WHERE space_id = ?").get(s.id) as Row).p;
     db.prepare(
       "INSERT INTO tools (space_id, id, name, url_patterns_json, fetch_mode, adapter, state_map_json, enabled, position) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
     ).run(s.id, id, t.name, JSON.stringify(t.url_patterns), t.fetch_mode, t.adapter ?? null, t.state_map ? JSON.stringify(t.state_map) : null, pos);
+    if (hasDescription && t.description) db.prepare("UPDATE tools SET description = ? WHERE space_id = ? AND id = ?").run(t.description, s.id, id);
   }
 }
 

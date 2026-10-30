@@ -30,12 +30,40 @@ function counts(ctx: Ctx, space: Space) {
   return out;
 }
 
-/** Tools as the UI needs them: `fetch_mode` is the effective mode on this server. */
-function toolsView(ctx: Ctx, space: Space) {
+type Usage = { questions: number; in_progress: number };
+
+/** How many (non-removed) questions use each tool, and how many of those processes are in progress. Custom processes by kind. */
+function usage(ctx: Ctx, space: Space) {
+  const rows = ctx.db
+    .prepare(
+      `SELECT p.tool_id, p.item_type, COUNT(*) AS n, SUM(CASE WHEN json_extract(p.fetched_json, '$.state') = 'open' THEN 1 ELSE 0 END) AS open
+       FROM processes p JOIN questions q ON q.id = p.question_id
+       WHERE p.space_id = ? AND q.removed_at IS NULL GROUP BY p.tool_id, p.item_type`,
+    )
+    .all(space.id) as { tool_id: string; item_type: string; n: number; open: number }[];
+  const tools = new Map<string, Usage>();
+  const custom: ({ kind: string } & Usage)[] = [];
+  for (const r of rows) {
+    if (r.tool_id === CUSTOM_TOOL_ID) {
+      custom.push({ kind: r.item_type, questions: r.n, in_progress: r.open });
+      continue;
+    }
+    const u = tools.get(r.tool_id) ?? { questions: 0, in_progress: 0 };
+    u.questions += r.n;
+    u.in_progress += r.open;
+    tools.set(r.tool_id, u);
+  }
+  custom.sort((a, b) => b.questions - a.questions || a.kind.localeCompare(b.kind));
+  return { tools, custom };
+}
+
+/** Tools as the UI needs them: `fetch_mode` is the effective mode on this server, plus `usage`. */
+function toolsView(ctx: Ctx, space: Space, used = usage(ctx, space).tools) {
   return repo.listTools(ctx.db, space.id).map((t) => {
     const a = t.adapter ? getAdapter(t.adapter) : undefined;
     const usable = t.fetch_mode === "auto" && !!a && (!a.available || a.available(ctx));
-    return t.fetch_mode === "auto" && !usable ? { ...t, fetch_mode: "manual" as const, auto_unavailable: true } : t;
+    const u = used.get(t.id) ?? { questions: 0, in_progress: 0 };
+    return t.fetch_mode === "auto" && !usable ? { ...t, fetch_mode: "manual" as const, auto_unavailable: true, usage: u } : { ...t, usage: u };
   });
 }
 
@@ -70,10 +98,12 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
 
   // ---- space-level ----
   if (method === "GET" && a === "space" && !id) {
+    const used = usage(ctx, space);
     return {
       space: repo.getSpace(ctx.db, space.id),
       role: r.role,
-      tools: toolsView(ctx, space),
+      tools: toolsView(ctx, space, used.tools),
+      custom_kinds: used.custom,
       adapters: adapterIds(),
       counts: counts(ctx, space),
       now: ctx.now().toISOString(),

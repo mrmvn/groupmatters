@@ -112,6 +112,47 @@ test("edit a manual tool; automatic tools can't be edited", async () => {
   assert.equal(view.status, 403);
 });
 
+test("tools say what they're useful for: seeded, editable on every tool (automatic: name and description only)", async () => {
+  const tools = (await api(editToken, "GET", "space")).json.tools;
+  assert.match(tools.find((x: any) => x.id === "loomio").description, /Group decisions/);
+  const loomio = tools.find((x: any) => x.id === "loomio");
+  const r = await api(editToken, "PATCH", "tools/loomio", { name: "Loomio (our group)", description: "  Votes on   proposals  " });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const after = r.json.tools.find((x: any) => x.id === "loomio");
+  assert.deepEqual([after.name, after.description, after.fetch_mode], ["Loomio (our group)", "Votes on proposals", "auto"]);
+  assert.deepEqual(after.url_patterns, loomio.url_patterns, "patterns untouched");
+  // Sending the unchanged patterns along is fine; changing them isn't.
+  assert.equal((await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", url_patterns: loomio.url_patterns })).status, 200);
+  assert.equal((await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", state_map: { Open: "open" } })).status, 400);
+  const kept = (await api(editToken, "GET", "space")).json.tools.find((x: any) => x.id === "loomio");
+  assert.deepEqual([kept.name, kept.description], ["Loomio", "Votes on proposals"], "missing description keeps the current one");
+  const cleared = await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", description: "" });
+  assert.equal(cleared.json.tools.find((x: any) => x.id === "loomio").description, undefined);
+  assert.equal((await api(editToken, "PATCH", "tools/loomio", { name: "Loomio", description: "x".repeat(401) })).status, 400);
+  const log = (await api(editToken, "GET", "activity?limit=3")).json.activity.find((e: any) => e.action === "tool.edited");
+  assert.equal(log.data.before.description, "Votes on proposals");
+  const added = await api(editToken, "POST", "tools", { name: "Notes pad", description: "Meeting notes", url_patterns: [{ pattern: "https://pad.example.org/*", item_type: "pad" }] });
+  assert.equal(added.json.tools.find((x: any) => x.name === "Notes pad").description, "Meeting notes");
+});
+
+test("tool usage: questions per tool and in progress; custom processes counted by kind", async () => {
+  const added = await api(editToken, "POST", "tools", { name: "Usage board", url_patterns: [{ pattern: "https://usage.example.org/*", item_type: "card" }] });
+  const tool = added.json.tools.find((x: any) => x.name === "Usage board");
+  assert.deepEqual(tool.usage, { questions: 0, in_progress: 0 });
+  const q1 = (await api(editToken, "POST", "questions", { title: "Usage one", process_url: "https://usage.example.org/1" })).json.question;
+  await api(editToken, "POST", "questions", { title: "Usage two", process_url: "https://usage.example.org/2" });
+  await api(editToken, "POST", `questions/${q1.id}/process/manual`, { state: "open", raw_state: "Open" });
+  const c = (await api(editToken, "POST", "questions", { title: "Usage three" })).json.question;
+  await api(editToken, "PUT", `questions/${c.id}/process`, { custom: { kind: "Garden meeting" } });
+  const d = (await api(editToken, "POST", "questions", { title: "Usage four" })).json.question;
+  await api(editToken, "PUT", `questions/${d.id}/process`, { custom: { kind: "Garden meeting" } });
+  await api(editToken, "POST", `questions/${d.id}/remove`, {});
+  const s = (await api(editToken, "GET", "space")).json;
+  assert.deepEqual(s.tools.find((x: any) => x.id === tool.id).usage, { questions: 2, in_progress: 1 });
+  assert.deepEqual(s.custom_kinds.find((k: any) => k.kind === "Garden meeting"), { kind: "Garden meeting", questions: 1, in_progress: 0 }, "removed questions don't count");
+  await api(editToken, "POST", `questions/${d.id}/restore`);
+});
+
 test("relate existing questions: shown on both, removable", async () => {
   const a = (await api(editToken, "POST", "questions", { title: "Relation A" })).json.question;
   const b = (await api(editToken, "POST", "questions", { title: "Relation B" })).json.question;
@@ -200,6 +241,7 @@ test("add a Consul instance as a tool: patterns generated, fetched automatically
   assert.equal(r.status, 200, JSON.stringify(r.json));
   const tool = r.json.tools.find((x: any) => x.adapter === "consul");
   assert.equal(tool.name, "Consul Democracy (decide.example.es)");
+  assert.match(tool.description, /participatory budgets/, "default description");
   assert.equal(tool.fetch_mode, "auto");
   assert.ok(tool.url_patterns.some((p: any) => p.pattern === "https://decide.example.es/proposals/:id{/*}?"));
   const preview = await api(editToken, "POST", "resolve-url", { url: "https://decide.example.es/proposals/42-mas-arboles" });

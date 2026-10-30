@@ -10,6 +10,7 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "github",
     name: "GitHub",
+    description: "Changes to code or documents (pull requests), and tasks, bugs or proposals tracked as issues, in public GitHub repositories.",
     fetch_mode: "auto",
     adapter: "github",
     enabled: true,
@@ -21,6 +22,7 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "gitlab",
     name: "GitLab",
+    description: "Merge requests and issues on gitlab.com (and on other GitLab servers the operator allows): changes to code or documents, tracked tasks and proposals.",
     fetch_mode: "auto",
     adapter: "gitlab",
     enabled: true,
@@ -33,6 +35,7 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "metaculus",
     name: "Metaculus",
+    description: "Forecasting: how likely something is to happen, estimated by a crowd of forecasters, until the question resolves.",
     // Automatic only when the operator sets METACULUS_TOKEN; otherwise updated by hand.
     fetch_mode: "auto",
     adapter: "metaculus",
@@ -55,6 +58,7 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "loomio",
     name: "Loomio",
+    description: "Group decisions: proposals, polls and votes, with a discussion thread around them.",
     // Public polls and threads are fetched; private ones fall back to updating by hand.
     fetch_mode: "auto",
     adapter: "loomio",
@@ -78,6 +82,7 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "polis",
     name: "Polis",
+    description: "Mapping opinions in a large group: people vote on short statements, and Polis shows where they agree and where they split.",
     fetch_mode: "auto",
     adapter: "polis",
     enabled: true,
@@ -91,6 +96,7 @@ export const SEED_TOOLS: Tool[] = [
     // Any Decidim instance: its URLs are distinctive, and fetches only go to public addresses.
     id: "decidim",
     name: "Decidim",
+    description: "Citizen participation platforms run by cities and organisations: proposals, debates, meetings and whole participatory processes.",
     fetch_mode: "auto",
     adapter: "decidim",
     enabled: true,
@@ -106,6 +112,7 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "kialo",
     name: "Kialo",
+    description: "Structured debate: mapping the arguments for and against a claim, as a tree.",
     fetch_mode: "manual",
     enabled: true,
     url_patterns: [
@@ -178,9 +185,10 @@ export function validateStateMap(m: unknown): Record<string, NormalizedState> | 
 }
 
 /** Tools added by giving an instance's address: the patterns are generated, the adapter fetches. */
-export const INSTANCE_KINDS: Record<string, { name: string; adapter: string; patterns: (host: string) => { pattern: string; item_type: string }[]; state_map: Record<string, NormalizedState> }> = {
+export const INSTANCE_KINDS: Record<string, { name: string; description: string; adapter: string; patterns: (host: string) => { pattern: string; item_type: string }[]; state_map: Record<string, NormalizedState> }> = {
   consul: {
     name: "Consul Democracy",
+    description: "A city's or organisation's citizen participation site: proposals, debates, participatory budgets and the projects voted in them.",
     adapter: "consul",
     patterns: (host) => [
       { pattern: `https://${host}/proposals/:id{/*}?`, item_type: "proposal" },

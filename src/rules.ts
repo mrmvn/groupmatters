@@ -8,7 +8,16 @@ import { INSTANCE_KINDS, validatePattern, validateStateMap } from "./tools.ts";
 import { tx } from "./db.ts";
 import { bad, requireText, slugify } from "./util.ts";
 
-type ToolInput = { name: string; url_patterns: { pattern: string; item_type: string }[]; state_map?: Record<string, NormalizedState> };
+type ToolInput = { name: string; description?: string; url_patterns: { pattern: string; item_type: string }[]; state_map?: Record<string, NormalizedState> };
+
+/** "What is it useful for?": optional plain text. Empty means none. */
+export function validateDescription(d: unknown): string | undefined {
+  if (d == null) return undefined;
+  if (typeof d !== "string") throw bad("The description must be text");
+  const t = d.trim().replace(/[ \t]+/g, " ");
+  if (t.length > 400) throw bad("Keep the description under 400 characters");
+  return t || undefined;
+}
 
 export function validateToolInput(t: any): ToolInput {
   if (!t || typeof t !== "object") throw bad("Invalid tool");
@@ -20,7 +29,7 @@ export function validateToolInput(t: any): ToolInput {
     item_type: slugify(requireText(p?.item_type, "Item type", 40)).replace(/-/g, "_"),
   }));
   const state_map = validateStateMap(t.state_map) ?? { Open: "open", Closed: "concluded" };
-  return { name, url_patterns, state_map };
+  return { name, description: validateDescription(t.description), url_patterns, state_map };
 }
 
 /** `{kind: "consul", base_url, name?}`: an instance of a supported platform, fetched automatically. */
@@ -37,7 +46,8 @@ function instanceToolInput(input: any): Omit<Tool, "id" | "enabled"> {
   const host = u.hostname.toLowerCase();
   if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) throw bad("That doesn't look like a public web address");
   const name = input.name ? requireText(input.name, "Tool name", 60) : `${kind.name} (${host})`;
-  return { name, url_patterns: kind.patterns(host), fetch_mode: "auto", adapter: kind.adapter, state_map: kind.state_map };
+  const description = input.description === undefined ? kind.description : validateDescription(input.description);
+  return { name, description, url_patterns: kind.patterns(host), fetch_mode: "auto", adapter: kind.adapter, state_map: kind.state_map };
 }
 
 /** Add a tool directly: a manual tool (patterns + states), or an instance of a supported platform. */
@@ -55,20 +65,32 @@ export function addToolDirect(ctx: Ctx, space: Space, actor: string, input: any)
   });
 }
 
-/** Edit a manual tool (name, URL patterns, states). Automatic tools are tied to their adapter and can only be toggled. */
+/**
+ * Edit a tool. Manual tools: name, description, URL patterns, states. Automatic tools are tied to their
+ * adapter: only the name and description can change. A missing `description` keeps the current one.
+ */
 export function editToolDirect(ctx: Ctx, space: Space, actor: string, toolId: string, input: any): Tool {
   const tool = repo.getTool(ctx.db, space.id, String(toolId));
   if (!tool) throw bad("Unknown tool");
-  if (tool.fetch_mode !== "manual") throw bad(`${tool.name} is updated automatically; its links can't be edited`);
-  const t = validateToolInput(input);
-  const before = { name: tool.name, url_patterns: tool.url_patterns, state_map: tool.state_map };
-  if (JSON.stringify(before) === JSON.stringify(t)) return tool;
-  const after: Tool = { ...tool, ...t };
+  if (!input || typeof input !== "object") throw bad("Invalid tool");
+  const keepDescription = !("description" in input);
+  let t: ToolInput;
+  if (tool.adapter) {
+    const same = (k: "url_patterns" | "state_map") => !(k in input) || JSON.stringify(input[k]) === JSON.stringify(tool[k]);
+    if (!same("url_patterns") || !same("state_map")) throw bad(`${tool.name} is updated automatically; only its name and description can be edited`);
+    t = { name: requireText(input.name, "Tool name", 60), description: validateDescription(input.description), url_patterns: tool.url_patterns, state_map: tool.state_map };
+  } else t = validateToolInput(input);
+  if (keepDescription) t.description = tool.description;
+  const pick = (x: ToolInput) => ({ name: x.name, description: x.description, url_patterns: x.url_patterns, state_map: x.state_map });
+  const before = pick(tool);
+  const after = pick(t);
+  if (JSON.stringify(before) === JSON.stringify(after)) return tool;
+  const updated: Tool = { ...tool, ...after };
   tx(ctx.db, () => {
-    repo.updateTool(ctx.db, space.id, after);
-    repo.logEvent(ctx, { space_id: space.id, actor, action: "tool.edited", data: { tool_id: tool.id, before, after: t } });
+    repo.updateTool(ctx.db, space.id, updated);
+    repo.logEvent(ctx, { space_id: space.id, actor, action: "tool.edited", data: { tool_id: tool.id, before, after } });
   });
-  return after;
+  return updated;
 }
 
 /** Enable or disable a tool directly. */

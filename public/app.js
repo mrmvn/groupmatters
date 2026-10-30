@@ -290,7 +290,7 @@ async function pageHome(params) {
         options.map(([v, l]) => h("option", { value: v, selected: (params.get(key) ?? "") === v }, l)),
       ),
     );
-  const itemTypes = [...new Set(S.tools.flatMap((t) => t.url_patterns.map((p) => p.item_type)))];
+  const itemTypes = [...new Set([...S.tools.flatMap((t) => t.url_patterns.map((p) => p.item_type)), ...(S.custom_kinds ?? []).map((k) => k.kind)])];
   const filters = h(
     "details",
     { class: "filters", open: ["status", "tool", "state", "source", "has_process", "item_type", "sort"].some((k) => params.get(k)) || params.get("lane") === "all" },
@@ -609,12 +609,13 @@ function attachForm(q, replace, prefillUrl) {
     let kind = isCustom ? "custom" : "link";
     const url = h("input", { type: "url", placeholder: "https://…", value: prefillUrl ?? (!isCustom && p?.url ? p.url : "") });
     const cKind = h("input", { type: "text", maxlength: 60, placeholder: "e.g. Meeting, Unconference, Paper survey", value: isCustom ? p.item_type : "", list: `${name}-kinds` });
-    const kinds = h("datalist", { id: `${name}-kinds` }, ["Meeting", "General assembly", "Unconference", "Workshop", "Survey", "Working group"].map((k) => h("option", { value: k })));
+    const usedKinds = (S.custom_kinds ?? []).map((k) => k.kind);
+    const kinds = h("datalist", { id: `${name}-kinds` }, [...new Set([...usedKinds, "Meeting", "General assembly", "Unconference", "Workshop", "Survey", "Working group"])].map((k) => h("option", { value: k })));
     const cTitle = h("input", { type: "text", maxlength: 300, placeholder: "Optional, e.g. Spring general assembly", value: isCustom ? (p.fetched?.title ?? "") : "" });
     const cUrl = h("input", { type: "url", placeholder: "Optional: https://… (notes, event page)", value: isCustom ? (p.url ?? "") : "" });
     const cWhen = h("input", { type: "datetime-local", value: isCustom && p.fetched?.dates?.opens_at ? toLocalInput(p.fetched.dates.opens_at) : "" });
     const framing = h("textarea", { rows: 2, placeholder: "Optional", value: p?.framing ?? "" });
-    const linkBox = h("div", null, field("Link", url, `Tools on the list: ${S.tools.filter((t) => t.enabled).map((t) => t.name).join(", ")}.`));
+    const linkBox = h("div", null, field("Link", url), toolHints());
     const customBox = h("div", null, field("Kind of process", cKind), kinds, field("Title", cTitle), field("When", cWhen), field("Link", cUrl), h("p", { class: "muted small" }, "Its state is set by hand, using the space's status labels."));
     const sync = () => ((linkBox.hidden = kind !== "link"), (customBox.hidden = kind !== "custom"), (url.required = kind === "link"), (cKind.required = kind === "custom"));
     sync();
@@ -646,6 +647,17 @@ function attachForm(q, replace, prefillUrl) {
       },
     };
   });
+}
+
+/** The enabled tools and what each is useful for, folded under their names. */
+function toolHints() {
+  const tools = S.tools.filter((t) => t.enabled);
+  return h(
+    "details",
+    { class: "tool-hints hint" },
+    h("summary", null, `Tools on the list: ${tools.map((t) => t.name).join(", ")}`),
+    h("ul", null, tools.map((t) => h("li", null, h("strong", null, t.name), t.description ? ` — ${t.description}` : null))),
+  );
 }
 
 /** Hand-set process states: the tool's own states, or the space's status labels for custom processes. */
@@ -790,10 +802,12 @@ async function pageRules(sub, params) {
   if (sub === "tool") {
     const tool = S.tools.find((t) => t.id === params.get("id"));
     if (!tool) throw new Error("Unknown tool");
-    if (tool.fetch_mode !== "manual" || tool.adapter) throw new Error(`${tool.name} is updated automatically; its links can't be edited.`);
     return toolFormPage({ tool });
   }
   const updates = (t) => (t.fetch_mode === "auto" ? "automatic" : t.auto_unavailable ? "by hand (automatic needs server setup)" : "by hand");
+  const used = (u, href) =>
+    u?.questions ? h("a", { href }, `${u.questions} question${u.questions === 1 ? "" : "s"}`, u.in_progress ? ` · ${u.in_progress} in progress` : "") : h("span", { class: "muted" }, "—");
+  const customKinds = S.custom_kinds ?? [];
   return h(
     "div",
     { class: "rules" },
@@ -811,7 +825,7 @@ async function pageRules(sub, params) {
         h(
           "table",
           null,
-          h("thead", null, h("tr", null, h("th", null, "Tool"), h("th", null, "Links accepted"), h("th", null, "Updates"), h("th", null, "Status"), canEdit() ? h("th", null) : null)),
+          h("thead", null, h("tr", null, h("th", null, "Tool"), h("th", null, "Links accepted"), h("th", null, "Updates"), h("th", null, "Used by"), h("th", null, "Status"), canEdit() ? h("th", null) : null)),
           h(
             "tbody",
             null,
@@ -819,15 +833,17 @@ async function pageRules(sub, params) {
               h(
                 "tr",
                 { class: t.enabled ? "" : "disabled" },
-                h("td", null, t.name),
+                h("td", null, h("strong", null, t.name), t.description ? h("div", { class: "muted small" }, t.description) : null),
                 h("td", null, t.url_patterns.map((p) => h("div", null, h("code", null, p.pattern), " → ", itemLabel(p.item_type)))),
                 h("td", null, updates(t)),
+                h("td", null, used(t.usage, `#/list${qs({ lane: "all", tool: t.id })}`)),
                 h("td", null, t.enabled ? "enabled" : "disabled"),
                 canEdit()
                   ? h(
                       "td",
                       null,
-                      t.fetch_mode === "manual" && !t.adapter ? [h("a", { class: "link", href: `#/rules/tool${qs({ id: t.id })}` }, "Edit"), " · "] : null,
+                      h("a", { class: "link", href: `#/rules/tool${qs({ id: t.id })}` }, "Edit"),
+                      " · ",
                       h("button", { class: "link", onclick: async () => (await act(() => api("POST", `tools/${t.id}/enabled`, { enabled: !t.enabled }), t.enabled ? "Tool disabled" : "Tool enabled")) && refresh() }, t.enabled ? "Disable" : "Enable"),
                     )
                   : null,
@@ -837,6 +853,15 @@ async function pageRules(sub, params) {
         ),
       ),
     ),
+    customKinds.length
+      ? h(
+          "section",
+          { class: "panel" },
+          h("h2", null, "Custom processes in use"),
+          h("p", { class: "muted" }, "Processes described by hand (meetings, assemblies…), by kind. Offered as suggestions when linking a custom process."),
+          h("ul", { class: "rel-list" }, customKinds.map((k) => h("li", null, h("strong", null, k.kind), " · ", used(k, `#/list${qs({ lane: "all", tool: CUSTOM_TOOL_ID, item_type: k.kind })}`)))),
+        )
+      : null,
     statusLabelsPanel(),
     S.counts.removed ? await removedPanel() : null,
     h("section", { class: "panel charter" }, renderMarkdown(S.space.charter_markdown)),
@@ -924,8 +949,9 @@ async function downloadExport() {
   setTimeout(() => (URL.revokeObjectURL(a.href), a.remove()), 1000);
 }
 
-/** Add a tool, or edit a manual one when `tool` is given. */
+/** Add a tool, or edit one when `tool` is given (automatic tools: only the name and description). */
 function toolFormPage({ url, tool }) {
+  const auto = !!tool?.adapter;
   let host = "";
   try {
     host = url ? new URL(url).hostname : "";
@@ -957,6 +983,7 @@ function toolFormPage({ url, tool }) {
   tester.addEventListener("input", test);
   patterns.addEventListener("input", test);
   queueMicrotask(test);
+  const description = h("textarea", { rows: 2, maxlength: 400, value: tool?.description ?? "", placeholder: "e.g. Decisions that need everyone's consent: proposals and votes" });
   const btn = h("button", { type: "submit", class: "primary" }, tool ? "Save tool" : "Add tool");
   // Adding: a tool updated by hand (patterns + states), or an instance of a platform we can fetch.
   let kind = !tool && url && /\/(proposals|debates|budgets)\/\d+/.test(url) ? "consul" : "manual";
@@ -985,12 +1012,13 @@ function toolFormPage({ url, tool }) {
     field("Instance address", baseUrl, "The home page of your city's or organisation's Consul Democracy site. Proposals, debates, budgets and investments from it are then fetched automatically."),
     h("p", { class: "muted small" }, "Decidim needs no setup: links from any Decidim instance are recognised already."),
   );
+  if (auto) kind = "auto";
   const syncKind = () => {
     manualBox.hidden = kind !== "manual";
     consulBox.hidden = kind !== "consul";
     patterns.required = kind === "manual";
     baseUrl.required = kind === "consul";
-    name.required = kind === "manual";
+    name.required = kind !== "consul";
     name.placeholder = kind === "consul" ? "Optional, e.g. Decide Madrid" : "";
     if (kind === "consul" && name.value === host.replace(/^www\./, "")) name.value = "";
   };
@@ -1005,7 +1033,9 @@ function toolFormPage({ url, tool }) {
     h(
       "p",
       null,
-      tool
+      auto
+        ? `${tool.name} is followed automatically: its links and states come with it. You can rename it and say what your group uses it for.`
+        : tool
         ? "Changes apply right away. Links already attached stay with this tool; their recorded state is kept even if you rename or remove a state label."
         : "Tools updated by hand work with any website: anyone with edit access sets the state, and the page title prefills questions when possible. Some platforms can be followed automatically.",
     ),
@@ -1015,15 +1045,20 @@ function toolFormPage({ url, tool }) {
         class: "panel",
         onsubmit: async (e) => {
           e.preventDefault();
-          if (kind === "consul") {
-            btn.disabled = true;
-            const r = await act(() => api("POST", "tools", { kind: "consul", base_url: baseUrl.value, name: name.value || undefined }), "Tool added");
+          const done = async (r) => {
             btn.disabled = false;
             if (r) {
               await loadSpace();
               location.hash = "#/rules";
             }
-            return;
+          };
+          if (auto) {
+            btn.disabled = true;
+            return done(await act(() => api("PATCH", `tools/${tool.id}`, { name: name.value, description: description.value }), "Tool saved"));
+          }
+          if (kind === "consul") {
+            btn.disabled = true;
+            return done(await act(() => api("POST", "tools", { kind: "consul", base_url: baseUrl.value, name: name.value || undefined, description: description.value || undefined }), "Tool added"));
           }
           const state_map = {};
           let url_patterns;
@@ -1034,17 +1069,13 @@ function toolFormPage({ url, tool }) {
             return toast(err.message, "error");
           }
           btn.disabled = true;
-          const body = { name: name.value, url_patterns, state_map };
-          const r = await act(() => (tool ? api("PATCH", `tools/${tool.id}`, body) : api("POST", "tools", body)), tool ? "Tool saved" : "Tool added");
-          btn.disabled = false;
-          if (r) {
-            await loadSpace();
-            location.hash = "#/rules";
-          }
+          const body = { name: name.value, description: description.value, url_patterns, state_map };
+          return done(await act(() => (tool ? api("PATCH", `tools/${tool.id}`, body) : api("POST", "tools", body)), tool ? "Tool saved" : "Tool added"));
         },
       },
       tool ? null : h("div", { class: "radios" }, kindRadio("manual", "Any website, updated by hand"), kindRadio("consul", "A Consul Democracy instance (followed automatically)")),
       field("Tool name", name),
+      field("What is it useful for?", description, "Optional. Shown in the tool list and when someone links a process, to help pick the right tool."),
       manualBox,
       consulBox,
       h("div", { class: "row" }, btn),

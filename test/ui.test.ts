@@ -300,7 +300,37 @@ test("tool edit page shows the state mapping as rows", async () => {
 test("tool edit page renders for manual tools", async () => {
   await go("#/rules/tool?id=kialo");
   assert.match(document.querySelector("main")!.textContent!, /Edit \u201cKialo\u201d/);
-  assert.match((document.querySelector("textarea") as any).value, /kialo\.com\/:slug/);
+  assert.ok(([...document.querySelectorAll("textarea")] as any[]).some((t) => /kialo\.com\/:slug/.test(t.value)));
+  assert.match((document.querySelector("textarea") as any).value, /Structured debate/, "description first");
+});
+
+test("rules list shows what each tool is for and how much it's used; automatic tools edit name and description only", async () => {
+  const rules = await go("#/rules");
+  assert.match(rules.textContent!, /Group decisions/);
+  assert.match(rules.textContent!, /Used by/);
+  assert.ok(rules.querySelector('a[href="#/list?lane=all&tool=github"]'), "usage links to the filtered list");
+  assert.ok(rules.querySelector('a[href="#/rules/tool?id=github"]'), "automatic tools have an Edit link");
+  const main = await go("#/rules/tool?id=github");
+  assert.equal((main.querySelector("input[type=text]") as any).value, "GitHub");
+  const visible = ([...main.querySelectorAll("textarea")] as any[]).filter((t) => !t.closest("[hidden]"));
+  assert.equal(visible.length, 1, "only the description");
+  visible[0].value = "Our code and docs";
+  main.querySelector("form")!.dispatchEvent(new window.Event("submit", { cancelable: true }));
+  await sleep(150);
+  await settle();
+  assert.equal(repo.getTool(t.ctx.db, demo.space.id, "github")!.description, "Our code and docs");
+  assert.match(hash, /^#\/rules/);
+});
+
+test("link a process: the tool list with descriptions is offered as a hint", async () => {
+  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => !x.process)!;
+  const main = await go(`#/q/${q.id}`);
+  const btn = ([...main.querySelectorAll("button")] as any[]).find((b) => /Link a process/.test(b.textContent));
+  btn.click();
+  await sleep(50);
+  const hints = document.querySelector(".tool-hints")!;
+  assert.match(hints.textContent!, /Tools on the list: .*Loomio/);
+  assert.match(hints.textContent!, /Group decisions/);
 });
 
 test("no console errors", () => {

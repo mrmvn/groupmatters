@@ -97,6 +97,8 @@ export type Relation = { from_id: string; to_id: string; kind: RelationKind; cre
 export type Tool = {
   id: string;
   name: string;
+  /** What the tool is useful for, in the group's words. Shown in the tool list and when linking a process. */
+  description?: string;
   url_patterns: { pattern: string; item_type: string }[];
   fetch_mode: "auto" | "manual";
   adapter?: string;

@@ -48,7 +48,7 @@ On a question's page, type in the **Related questions** box: matching questions 
 
 ## Rules
 
-The **Rules** tab shows how the register works (the charter), the list of tools and the status labels. Anyone with edit access can **add or edit a tool** (including how its states map to categories), and edit the **status labels** (each belongs to one category). The charter is changed by whoever runs the register, for now.
+The **Rules** tab shows how the register works (the charter), the list of tools and the status labels. Each tool says **what it's useful for** and how many questions use it (click the count to see them); custom processes in use are listed by kind. Anyone with edit access can **add or edit a tool** (including how its states map to categories; for tools followed automatically, only the name and description), and edit the **status labels** (each belongs to one category). The charter is changed by whoever runs the register, for now.
 
 ## Good to know
 

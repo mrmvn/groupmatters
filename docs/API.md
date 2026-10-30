@@ -15,10 +15,10 @@ Every UI action goes through this API. Base path: `/api/s/<token>/`. The token i
 
 | Method & path | Body | Purpose |
 |---|---|---|
-| `GET space` | | Space (name, settings incl. `status_labels`, charter), `role`, `tools` (with the effective `fetch_mode`; `auto_unavailable: true` when an adapter needs server setup), `adapters`, `counts` by status, server `now` |
+| `GET space` | | Space (name, settings incl. `status_labels`, charter), `role`, `tools` (with the effective `fetch_mode`; `auto_unavailable: true` when an adapter needs server setup; `usage: {questions, in_progress}`), `custom_kinds` (custom processes in use: `[{kind, questions, in_progress}]`, most used first), `adapters`, `counts` by status, server `now`. Usage counts skip removed questions; `in_progress` counts processes whose state is `open` |
 | `PUT settings/status-labels` | `{status_labels: [{label, state}]}` | Replaces the hand-set status labels. At least one `not_started` label. Returns `{space}` |
-| `POST tools` | `{name, url_patterns:[{pattern,item_type}], state_map?}`, or `{kind: "consul", base_url, name?}` | Adds a manual tool, or an instance of a supported platform (patterns generated, fetched automatically). Returns `{tools}` |
-| `PATCH tools/:id` | `{name, url_patterns, state_map?}` | Edits a manual tool (automatic tools: 400). Returns `{tools}` |
+| `POST tools` | `{name, description?, url_patterns:[{pattern,item_type}], state_map?}`, or `{kind: "consul", base_url, name?, description?}` | Adds a manual tool, or an instance of a supported platform (patterns generated, fetched automatically). Returns `{tools}` |
+| `PATCH tools/:id` | `{name, description?, url_patterns, state_map?}` | Edits a tool. Automatic tools (with an adapter): only `name` and `description`; changed `url_patterns`/`state_map` → 400. A missing `description` keeps the current one, `""` clears it (max 400 characters). Returns `{tools}` |
 | `POST tools/:id/enabled` | `{enabled}` | Enables or disables a tool. Returns `{tools}` |
 | `GET activity?before=<id>&limit=<n>` | | Activity log, newest first (max 1000 per page) |
 | `GET export` | | Full JSON export (see `EXPORT.md`) |

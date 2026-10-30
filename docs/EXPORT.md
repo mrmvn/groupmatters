@@ -24,7 +24,7 @@ Types (see `src/types.ts`):
 - **Process** (nested as `question.process`): `{url?, tool_id, item_type, framing?, fetch_mode, fetched?}`. Custom processes have `tool_id: "custom"`, `item_type` = their kind ("General assembly"), and may have no `url`.
 - **Fetched**: `{title?, raw_state?, state, terminal, outcome_summary?, dates?: {opens_at?, closes_at?, resolved_at?, updated_at?}, extra?, fetched_at, fetch_error?}`. `dates.updated_at` is the last activity on the platform, when known.
 - **Relation**: `{from_id, to_id, kind: "related"|"duplicate", created_at, created_by}`. Directed; `duplicate` means `from` duplicates `to`.
-- **Tool**: `{id, name, url_patterns: [{pattern, item_type}], fetch_mode, adapter?, state_map?, enabled}`.
+- **Tool**: `{id, name, description?, url_patterns: [{pattern, item_type}], fetch_mode, adapter?, state_map?, enabled}`. `description` ("what is it useful for?") is additive (migration 6), so the format version is unchanged.
 - **ActivityEvent**: `{id, space_id, question_id?, at, actor, action, data}`. `actor` is a display name, `system` or `operator`. `data` holds before/after values for the action.
 
 ### Changes from earlier versions
