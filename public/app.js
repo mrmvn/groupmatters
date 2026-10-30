@@ -1,5 +1,6 @@
 // Question register — single-page UI. Hash routes:
-//   #/list?lane=current&q=…  home (lanes, search, filters)
+//   #/dashboard              summary widgets (the space name in the header links here)
+//   #/list?lane=current&q=…  the list (lanes, search, filters)
 //   #/q/<id>                 question page
 //   #/rules                  charter, tool list, status labels; #/rules/add-tool?url=…; #/rules/tool?id=… (edit)
 //   #/timeline?…            the same questions as bars over time (same filters as the list)
@@ -11,6 +12,7 @@ import { statusPill, questionPill, statePill, questionCard, activityItem, mappin
 import { renderMarkdown } from "./md.js";
 import { fieldCell, createFields, retrievedFromPreview, FIELD_LABEL } from "./fields.js";
 import { timelineChart } from "./timeline.js";
+import { dashboardPage } from "./dashboard.js";
 
 const app = document.getElementById("app");
 const S = { space: null, role: "view", tools: [], counts: {}, since: null };
@@ -147,12 +149,13 @@ async function render() {
     else if (parts[0] === "rules") view = await pageRules(parts[1], params);
     else if (parts[0] === "activity") view = await pageActivity();
     else if (parts[0] === "timeline") view = await pageTimeline(params);
+    else if (parts[0] === "dashboard") view = await pageDashboard();
     else view = await pageHome(params);
   } catch (e) {
     view = h("div", { class: "panel error" }, h("h2", null, "Something went wrong"), h("p", null, e.message));
   }
   if (seq !== renderSeq) return;
-  app.replaceChildren(header(parts[0] ?? "list", params), h("main", { id: "main" }, view));
+  app.replaceChildren(header(parts[0] ?? "list"), h("main", { id: "main" }, view));
   if (!parts[0] || parts[0] === "list") {
     document.getElementById("composer-input")?.focus({ preventScroll: true });
     if (canEdit()) onLinkDrop = fillComposer;
@@ -166,19 +169,15 @@ async function refresh() {
   await render();
 }
 
-function header(section, params) {
-  const c = S.counts ?? {};
-  const n = (states) => states.reduce((a, s) => a + (c[s] ?? 0), 0);
-  const lane = params.get("lane") ?? (section === "list" && ![...params.keys()].length ? "current" : null);
-  const tab = (key, label, href) =>
-    h("a", { href, class: `tab${(section === "list" && lane === key) || (section === key && !lane) ? " current" : ""}`, "aria-current": section === "list" && lane === key ? "page" : null }, label);
+function header(section) {
+  const tab = (key, label) => h("a", { href: `#/${key}`, class: `tab${section === key ? " current" : ""}`, "aria-current": section === key ? "page" : null }, label);
   return h(
     "header",
     { class: "top" },
     h(
       "div",
       { class: "top-row" },
-      h("a", { href: "#/list?lane=current", class: "space-name" }, S.space.name),
+      h("a", { href: "#/dashboard", class: "space-name", title: "Dashboard", "aria-current": section === "dashboard" ? "page" : null }, S.space.name),
       h(
         "div",
         { class: "who" },
@@ -186,19 +185,9 @@ function header(section, params) {
         canEdit() ? h("button", { class: "link", onclick: () => askName(), title: "Change your display name" }, "You: ", h("strong", null, getName() || "?"), " ✎") : null,
       ),
     ),
-    h(
-      "nav",
-      { class: "lanes", "aria-label": "Lanes" },
-      tab("current", `Current (${n(["not_started", "open"])})`, "#/list?lane=current"),
-      tab("ended", `Ended (${n(ENDED)})`, "#/list?lane=ended"),
-      tab("withdrawn", `Withdrawn (${n(["withdrawn"])})`, "#/list?lane=withdrawn"),
-      h("a", { href: "#/timeline", class: `tab${section === "timeline" ? " current" : ""}`, "aria-current": section === "timeline" ? "page" : null }, "Timeline"),
-      h("a", { href: "#/rules", class: `tab${section === "rules" ? " current" : ""}` }, "Rules"),
-      h("a", { href: "#/activity", class: `tab${section === "activity" ? " current" : ""}` }, "Activity"),
-    ),
+    h("nav", { class: "lanes", "aria-label": "Sections" }, tab("list", "List"), tab("timeline", "Timeline"), tab("rules", "Rules"), tab("activity", "Activity")),
   );
 }
-
 
 // ---------------------------------------------------------------- helpers
 
@@ -304,14 +293,19 @@ function listControls(params, route, { defaultLane = "current", sort = true } = 
   if (route === "timeline") other.delete("sort");
   if (!other.get("lane")) other.set("lane", lane);
   const switchLink = h("p", { class: "small" }, h("a", { href: `#/${route === "timeline" ? "list" : "timeline"}?${other}` }, route === "timeline" ? "Show these as a list" : "Show these on a timeline"));
+  const presets = h(
+    "div",
+    { class: "presets", role: "group", "aria-label": "Shortcuts" },
+    PRESETS.map(([k, l]) => h("button", { type: "button", class: `chip-btn${params.get("preset") === k ? " on" : ""}`, "aria-pressed": params.get("preset") === k ? "true" : "false", onclick: () => setParam("preset", params.get("preset") === k ? "" : k) }, l)),
+  );
   const filters = h(
     "details",
-    { class: "filters", open: ["status", "tool", "state", "source", "has_process", "item_type", "sort"].some((k) => params.get(k)) || (params.get("lane") === "all" && defaultLane !== "all") },
+    { class: "filters", open: ["preset", "status", "tool", "state", "source", "has_process", "item_type", "sort"].some((k) => params.get(k)) },
     h("summary", null, "Filters"),
+    presets,
     h(
       "div",
       { class: "filter-grid" },
-      sel("lane", "Lane", Object.entries(LANES).map(([k, l]) => [k, l.label]), null, lane),
       sel("status", "Status", QUESTION_STATES.map((s) => [s, STATE[s]])),
       sel("source", "Status is", [["retrieved", "Retrieved"], ["typed", "Typed"]]),
       sel("tool", "Tool", [[CUSTOM_TOOL_ID, "Custom process"], ...S.tools.map((t) => [t.id, t.name])]),
@@ -322,13 +316,25 @@ function listControls(params, route, { defaultLane = "current", sort = true } = 
     ),
     switchLink,
   );
-  const presets = h(
-    "div",
-    { class: "presets", role: "group", "aria-label": "Shortcuts" },
-    PRESETS.map(([k, l]) => h("button", { type: "button", class: `chip-btn${params.get("preset") === k ? " on" : ""}`, "aria-pressed": params.get("preset") === k ? "true" : "false", onclick: () => setParam("preset", params.get("preset") === k ? "" : k) }, l)),
-  );
   const relatedChip = params.get("related") ? h("p", null, "Showing questions related to another · ", h("a", { href: `#/q/${params.get("related")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("related", "") }, "clear")) : null;
-  return { searching, lane, query, controls: [h("div", { class: "toolbar" }, searchForm, presets), filters, relatedChip] };
+  // Lanes with counts, beside the search (the same on the list and the timeline). Withdrawn is the Status filter.
+  const c = S.counts ?? {};
+  const n = (states) => states.reduce((a, s) => a + (c[s] ?? 0), 0);
+  const laneNav = h(
+    "nav",
+    { class: "sublanes", "aria-label": "Lanes" },
+    [
+      ["current", `Current (${n(["not_started", "open"])})`],
+      ["ended", `Ended (${n(ENDED)})`],
+      ["all", "All"],
+    ].map(([k, label]) => {
+      const p = new URLSearchParams(params);
+      p.set("lane", k);
+      p.delete("status");
+      return h("a", { href: `#/${route}?${p}`, class: `sublane${lane === k ? " current" : ""}`, "aria-current": lane === k ? "page" : null }, label);
+    }),
+  );
+  return { searching, lane, query, controls: [h("div", { class: "toolbar" }, searchForm, laneNav), filters, relatedChip] };
 }
 
 async function pageHome(params) {
@@ -339,6 +345,11 @@ async function pageHome(params) {
     ? h("ul", { class: "cards" }, questions.map((q) => questionCard(q, ctx)))
     : h("p", { class: "empty" }, searching ? "No questions match." : lane === "current" ? "No current questions. Add one above." : "Nothing here yet.");
   return h("div", null, canEdit() ? composer() : null, controls, list);
+}
+
+async function pageDashboard() {
+  const d = await api("GET", `dashboard${qs({ you: getName(), since: S.since })}`);
+  return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name });
 }
 
 /** The questions with a start date as bars over time, to their end (or today). */

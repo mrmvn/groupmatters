@@ -9,6 +9,7 @@ import { list, similar } from "../search.ts";
 import { addToolDirect, editToolDirect, setStatusLabels, setToolEnabledDirect } from "../rules.ts";
 import { exportSpace } from "../export.ts";
 import { timeline } from "../timeline.ts";
+import { dashboard } from "../dashboard.ts";
 import { withFields } from "../fields.ts";
 import { adapterIds, getAdapter } from "../adapters/index.ts";
 import { forbidden, HttpError, notFound, bad } from "../util.ts";
@@ -115,6 +116,9 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
   if (method === "GET" && a === "export" && !id) return exportSpace(ctx, space);
   if (method === "GET" && a === "timeline" && !id) {
     return { ...timeline(ctx, space, Object.fromEntries(r.query.entries())), now: ctx.now().toISOString() };
+  }
+  if (method === "GET" && a === "dashboard" && !id) {
+    return dashboard(ctx, space, { you: r.query.get("you") ?? undefined, since: r.query.get("since") ?? undefined });
   }
   if (method === "GET" && a === "similar" && !id) {
     return { similar: similar(ctx, space, r.query.get("title") ?? "", r.query.get("exclude") ?? undefined) };

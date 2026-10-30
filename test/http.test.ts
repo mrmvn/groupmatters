@@ -286,3 +286,45 @@ test("link rotation invalidates the old link and is logged", async () => {
   const act = await api(editToken, "GET", "activity?limit=1");
   assert.equal(act.json.activity[0].action, "link.rotated");
 });
+
+test("dashboard: totals, tools, answered questions, weeks, streak, people, milestones", async () => {
+  const t2 = makeCtx();
+  const sp = makeSpace(t2.ctx);
+  const call = async (method: string, path: string, body?: unknown, name = "Ana") => {
+    const headers: Record<string, string> = { "x-actor-name": encodeURIComponent(name) };
+    if (body !== undefined) headers["content-type"] = "application/json";
+    const r = await route(t2.ctx, { method, url: `/api/s/${sp.editToken}/${path}`, headers, body: body === undefined ? undefined : Buffer.from(JSON.stringify(body)) });
+    return JSON.parse(r.body.toString());
+  };
+  const a = await call("POST", "questions", { title: "Which license for the docs?", process: { kind: "Monthly meeting" } });
+  await call("POST", "questions", { title: "Where do we meet?" }, "Ben");
+  t2.advance(3 * 24 * 3600_000);
+  await call("PUT", `questions/${a.question.id}/fields`, { set: { status: { label: "Agreed" } } }, "Ben");
+
+  const d = await call("GET", `dashboard?you=ben&since=${encodeURIComponent("2000-01-01")}`);
+  assert.equal(d.totals.questions, 2);
+  assert.equal(d.totals.answered, 1);
+  assert.equal(d.totals.without_process, 1);
+  assert.equal(d.by_status.accepted, 1);
+  assert.deepEqual(d.tools.map((x: any) => [x.name, x.questions, x.ended]), [["Monthly meeting", 1, 1]]);
+  assert.equal(d.days_to_answer, 3);
+  assert.equal(d.recent_answers[0].title, "Which license for the docs?");
+  assert.equal(d.weekly.length, 12);
+  assert.equal(d.weekly.reduce((n: number, w: any) => n + w.added, 0), 2);
+  assert.equal(d.weekly.reduce((n: number, w: any) => n + w.answered, 0), 1);
+  assert.equal(d.days.length, 84);
+  assert.ok(d.streak.current >= 1);
+  assert.equal(d.you.name, "Ben", "matched case-insensitively");
+  assert.deepEqual([d.you.added, d.you.answered, d.you.actions], [1, 1, 2]);
+  assert.deepEqual(d.people.map((p: any) => p.name).sort(), ["Ana", "Ben"]);
+  assert.equal(d.since.changed, 2);
+  assert.ok(d.milestones.find((m: any) => m.id === "first").done);
+  assert.ok(!d.milestones.find((m: any) => m.id === "ten").done);
+  assert.equal((await call("GET", "dashboard")).you, null);
+
+  // Removed questions don't count.
+  await call("POST", `questions/${a.question.id}/remove`, { reason: "test" });
+  const after = await call("GET", "dashboard");
+  assert.equal(after.totals.questions, 1);
+  assert.equal(after.totals.answered, 0);
+});

@@ -87,9 +87,37 @@ test("every lane renders", async () => {
     if (lane === "current") assert.match(main.textContent!, /Should we move the weekly call to Thursdays\?/);
     if (lane === "ended") assert.match(main.textContent!, /Should CI use the newer upload-artifact action\?/);
   }
-  const header = document.querySelector("header")!.textContent!;
-  assert.match(header, /Current \(\d+\)/);
-  assert.match(header, /Ended \(\d+\)/);
+  const lanes = document.querySelector("main .sublanes")!.textContent!;
+  assert.match(lanes, /Current \(\d+\)/);
+  assert.match(lanes, /Ended \(\d+\)/);
+  assert.ok(document.querySelector('main .sublane.current[href*="lane=all"]'), "the chosen lane is marked");
+});
+
+test("header: tabs are List, Timeline, Rules, Activity; the space name opens the dashboard", async () => {
+  await go("#/list?lane=ended");
+  const tabs = [...document.querySelectorAll("header nav .tab")] as any[];
+  assert.deepEqual(tabs.map((a) => a.textContent), ["List", "Timeline", "Rules", "Activity"]);
+  assert.equal(document.querySelector("header .tab.current")!.textContent, "List");
+  assert.equal(document.querySelector("header a.space-name")!.getAttribute("href"), "#/dashboard");
+  await go("#/dashboard");
+  assert.equal(document.querySelector("header .tab.current"), null, "no tab is current on the dashboard");
+});
+
+test("dashboard renders its widgets; hiding one is remembered and can be undone", async () => {
+  const main = await go("#/dashboard");
+  const titles = [...main.querySelectorAll(".widget h2")].map((x: any) => x.textContent);
+  for (const w of ["At a glance", "Top tools used", "Questions by status", "Needs attention", "Your impact", "Milestones"]) assert.ok(titles.includes(w), w);
+  assert.ok(main.querySelector('.widget a[href="#/list?lane=all&tool=custom"]'), "tools link to the filtered list");
+  assert.match(main.textContent!, /asked/, "personal widget uses the display name");
+  (main.querySelector(".widget-hide") as any).click();
+  assert.equal(JSON.parse(store.get("qr:dash:hidden")!).length, 1);
+  assert.equal(main.querySelectorAll(".widget[hidden]").length, 1);
+  const again = await go("#/dashboard");
+  assert.equal(again.querySelectorAll(".widget[hidden]").length, 1, "still hidden");
+  const box = [...again.querySelectorAll(".widget-choice input")].find((b: any) => !b.checked) as any;
+  box.checked = true;
+  box.dispatchEvent(new window.Event("change"));
+  assert.equal(JSON.parse(store.get("qr:dash:hidden")!).length, 0);
 });
 
 test("search, presets and filters render", async () => {

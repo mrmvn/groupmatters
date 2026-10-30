@@ -19,7 +19,7 @@ Every question is in one of six categories: **Not started**, **In progress**, **
 - A question linked to a tool the register can read has its status **retrieved**: when the Loomio poll closes or the pull request is merged, it changes by itself.
 - Anyone can **type** a status instead, picking one of the group's status labels, like *Being discussed* or *Agreed*. "↺ use retrieved" goes back.
 
-The lanes: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **Withdrawn**. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
+The lanes, to the right of the search: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **All**, each with its count. Withdrawn questions: **Filters → Status → Withdrawn**. The shortcuts (no process yet, quiet for 30+ days, fetch problems) are also under **Filters**. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
 
 ## Adding a question
 
@@ -46,9 +46,13 @@ Under **Details**, each value says where it comes from: **retrieved** (from the 
 
 **Start** and **End** are fields like the others: retrieved when the item gives them (a poll's opening and closing, a pull request's opening and merge), or typed (leave the time empty for the whole day). "No date" hides a retrieved one. An end in the future is a planned end.
 
+## Dashboard
+
+Click the **name of the space** at the top to open the dashboard: a set of small widgets (at a glance, top tools, questions by status, kinds of item, momentum over 12 weeks, a monthly goal, an activity grid with a weekly streak, what needs attention, recently answered, your own impact, who's active, milestones). They're prototypes: **Choose widgets** (or **Hide** on a widget) removes the ones you don't find useful, kept in your browser only. "Your impact" and "Who's active" go by display name, which isn't verified.
+
 ## Timeline
 
-The **Timeline** tab shows the questions that have a start date, each as a bar from its start to its end. Running questions reach today (dashed right edge); a planned end shows as a dashed outline; an ended question with no end date shows a short fading mark. Colours are the status categories, and a vertical line marks today. Hover a bar for its dates. Questions without a start date are counted below the chart. The search, shortcuts and filters are the same as the list's, and **Show these on a timeline** / **Show these as a list** switches between the two views with the same filters.
+The **Timeline** tab (next to **List**) shows the questions that have a start date, each as a bar from its start to its end. Running questions reach today (dashed right edge); a planned end shows as a dashed outline; an ended question with no end date shows a short fading mark. Colours are the status categories, and a vertical line marks today. Hover a bar for its dates. Questions without a start date are counted below the chart. The search, shortcuts and filters are the same as the list's, and **Show these on a timeline** / **Show these as a list** switches between the two views with the same filters.
 
 ## Related questions
 
