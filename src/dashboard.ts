@@ -1,5 +1,6 @@
 // Dashboard: summaries of a space, computed on demand from questions and the activity log.
 // Prototype widgets: the UI lets each person hide the ones they don't want (see public/dashboard.js).
+// `streak`, `contributors` and `recent` (people active in the last 30 days) feed the streak line, milestones and "Your impact".
 import type { Ctx } from "./ctx.ts";
 import type { ActivityEvent, Question, QuestionState, Space } from "./types.ts";
 import { CUSTOM_TOOL_ID, QUESTION_STATES } from "./types.ts";
@@ -109,14 +110,6 @@ export function dashboard(ctx: Ctx, space: Space, opts: { you?: string; since?: 
   for (const a of answered) weekly[weekIndex(a.at)] && weekly[weekIndex(a.at)].answered++;
   for (const e of human) weekly[weekIndex(e.at)] && weekly[weekIndex(e.at)].actions++;
 
-  const perDay = new Map<string, number>();
-  for (const e of human) perDay.set(e.at.slice(0, 10), (perDay.get(e.at.slice(0, 10)) ?? 0) + 1);
-  const today = day(now);
-  const days = Array.from({ length: WEEKS * 7 }, (_, i) => {
-    const d = day(new Date(first.getTime() + i * DAY_MS));
-    return { date: d, n: perDay.get(d) ?? 0, future: d > today };
-  });
-
   // ---- streak: consecutive weeks with some human activity ----
   const activeWeeks = new Set(human.map((e) => day(weekStart(new Date(e.at)))));
   const wk = (i: number) => day(new Date(thisWeek.getTime() + i * 7 * DAY_MS));
@@ -184,14 +177,6 @@ export function dashboard(ctx: Ctx, space: Space, opts: { you?: string; since?: 
     ...(oldestOpen ? { oldest_open: { id: oldestOpen.id, title: oldestOpen.title, days: Math.floor((now.getTime() - Date.parse(oldestOpen.created_at)) / DAY_MS) } } : {}),
   };
 
-  // ---- this month ----
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  const month = {
-    start: monthStart.slice(0, 10),
-    added: events.filter((e) => e.action === "question.created" && e.at >= monthStart).length,
-    answered: answered.filter((a) => a.at >= monthStart).length,
-  };
-
   // ---- milestones ----
   const withProcess = questions.length - without_process;
   const milestones: Milestone[] = [
@@ -214,12 +199,9 @@ export function dashboard(ctx: Ctx, space: Space, opts: { you?: string; since?: 
     unused_tools,
     item_types,
     weekly,
-    days,
     streak: { current, best },
-    month,
     days_to_answer: days_to_answer === undefined ? null : Math.round(days_to_answer * 10) / 10,
     recent_answers,
-    people: recent.slice(0, 5),
     you,
     attention,
     milestones,

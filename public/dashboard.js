@@ -5,7 +5,6 @@ import { STATE, STATE_ICON, QUESTION_STATES, itemLabel } from "./labels.js";
 import { statusPill } from "./components.js";
 
 const HIDDEN_KEY = "qr:dash:hidden";
-const GOAL_KEY = "qr:dash:goal";
 const read = (k, fallback) => {
   try {
     return JSON.parse(localStorage.getItem(k)) ?? fallback;
@@ -42,22 +41,27 @@ function barRows(rows, max = Math.max(1, ...rows.map((r) => r.n))) {
 const empty = (text) => h("p", { class: "muted" }, text);
 
 // ---------------------------------------------------------------- widgets
-// Each: { id, title, why (what it's for: shown in the chooser), wide?, build(d, ctx) → Node }
+// Each: { id, title, why (what it's for: shown in the chooser), size: [columns, rows], build(d, ctx) → Node }
+// The grid has 4 columns on a wide screen and fixed row heights (see .dash-grid in style.css), so sizes
+// are what lets the widgets fit together like a puzzle: the sizes below add up to full rows
+// (row 1: glance 2 + since 1 + you 1; row 2: status 4; rows 3–4: tools 2 + momentum 2;
+// rows 5–6: answers 2 + kinds 1 + attention 1; row 7: milestones 4). Hidden widgets leave gaps that
+// later ones fill (grid-auto-flow: dense). On narrower screens widths are capped (2 columns, then 1).
 
 const WIDGETS = [
   {
     id: "since",
     title: "Since your last visit",
     why: "What changed while you were away",
+    size: [1, 1],
     build: (d, { since }) => {
-      if (!since) return empty("This is your first visit here: nothing to compare with yet.");
+      if (!since) return empty("Your first visit: nothing to compare with yet.");
       const n = d.since?.changed ?? 0;
       return h(
         "div",
         null,
-        h("p", { class: "big" }, n ? plural(n, "question") : "Nothing", n ? " changed" : " has changed"),
-        h("p", { class: "muted small" }, "since ", time(since, timeAgo(since)), ". "),
-        n ? h("a", { href: "#/activity" }, "See the activity") : null,
+        h("p", { class: "big" }, n),
+        h("p", { class: "small" }, n === 1 ? "question has" : "questions have", " changed since ", time(since, timeAgo(since)), n ? [" · ", h("a", { href: "#/activity" }, "Activity")] : null),
       );
     },
   },
@@ -65,6 +69,7 @@ const WIDGETS = [
     id: "glance",
     title: "At a glance",
     why: "Headline numbers, linked to the list",
+    size: [2, 1],
     build: (d) => {
       const tile = (n, label, href) => h("a", { class: "tile", href }, h("span", { class: "big" }, n), h("span", { class: "muted small" }, label));
       const s = d.by_status;
@@ -79,9 +84,33 @@ const WIDGETS = [
     },
   },
   {
+    id: "you",
+    title: "Your impact",
+    why: "Your own contributions (matched by display name)",
+    size: [1, 1],
+    build: (d, { role }) => {
+      const y = d.you;
+      if (!y) return empty(role === "view" ? "Personal stats need a display name, which only the edit link asks for." : "Set your display name to see your stats.");
+      if (!y.actions) return empty(`Nothing under the name “${y.name}” yet. Add or change something and it will show up here.`);
+      return h(
+        "div",
+        null,
+        h(
+          "div",
+          { class: "tiles compact" },
+          h("span", { class: "tile" }, h("span", { class: "big" }, y.added), h("span", { class: "muted small" }, "asked")),
+          h("span", { class: "tile", title: "Questions you moved to accepted, rejected or concluded" }, h("span", { class: "big" }, y.answered), h("span", { class: "muted small" }, "answered")),
+          h("span", { class: "tile" }, h("span", { class: "big" }, y.actions), h("span", { class: "muted small" }, "changes")),
+        ),
+        h("p", { class: "muted small" }, y.rank ? `#${y.rank} of ${y.of} active in the last 30 days` : "Nothing in the last 30 days"),
+      );
+    },
+  },
+  {
     id: "status",
     title: "Questions by status",
     why: "How the questions are spread across statuses",
+    size: [4, 1],
     build: (d) => {
       const total = d.totals.questions;
       if (!total) return empty("No questions yet.");
@@ -108,6 +137,7 @@ const WIDGETS = [
     id: "tools",
     title: "Top tools used",
     why: "Which tools the group's processes run on",
+    size: [2, 2],
     build: (d) => {
       const top = d.tools.slice(0, 5);
       const rows = top.map((t) => ({ label: t.name, n: t.questions, href: `#/list?lane=all&tool=${t.custom ? "custom" : t.id}`, note: t.custom ? "(custom)" : t.in_progress ? `· ${t.in_progress} in progress` : "" }));
@@ -127,6 +157,7 @@ const WIDGETS = [
     id: "kinds",
     title: "What kind of items",
     why: "Polls, pull requests, meetings…",
+    size: [1, 2],
     build: (d) => {
       const rows = d.item_types.slice(0, 6).map((k) => ({ label: k.kind === "none" ? "No kind" : itemLabel(k.kind), n: k.questions, href: k.kind === "none" ? null : `#/list?lane=all&item_type=${encodeURIComponent(k.kind)}`, cls: k.kind === "none" ? "muted-fill" : "" }));
       return rows.length ? barRows(rows) : empty("No questions yet.");
@@ -136,7 +167,7 @@ const WIDGETS = [
     id: "momentum",
     title: "Momentum, last 12 weeks",
     why: "Questions added and answered, week by week",
-    wide: true,
+    size: [2, 2],
     build: (d) => {
       const max = Math.max(1, ...d.weekly.flatMap((w) => [w.added, w.answered]));
       const col = (n, cls, label) => {
@@ -163,58 +194,13 @@ const WIDGETS = [
           { class: "small" },
           h("span", { class: "key added" }), ` Added (${addedTotal})  `,
           h("span", { class: "key answered" }), ` Answered (${answeredTotal})`,
-          d.days_to_answer !== null ? h("span", { class: "muted" }, ` · typical time to answer: ${d.days_to_answer < 1 ? "under a day" : `${d.days_to_answer} days`}`) : null,
         ),
-      );
-    },
-  },
-  {
-    id: "goal",
-    title: "Monthly goal",
-    why: "A shared target: questions answered this month",
-    build: (d) => {
-      const n = d.month.answered;
-      const box = h("div", null);
-      const draw = () => {
-        const g = Math.max(1, Number(localStorage.getItem(GOAL_KEY)) || 3);
-        const input = h("input", { type: "number", min: 1, max: 99, value: g, "aria-label": "Goal: questions answered this month", class: "goal-input" });
-        input.addEventListener("change", () => {
-          localStorage.setItem(GOAL_KEY, String(Math.max(1, Math.min(99, Math.round(Number(input.value)) || 3))));
-          draw();
-        });
-        box.replaceChildren(
-          h("p", { class: "big" }, `${n} / ${g}`, h("span", { class: "muted small" }, " answered this month")),
-          bar(n / g, n >= g ? "done" : ""),
-          h("p", { class: "small" }, n >= g ? "🎉 Goal reached. " : `${g - n} to go. `, h("label", { class: "inline muted" }, "Goal: ", input), h("span", { class: "muted" }, ` (kept in this browser only)`)),
-          d.month.added ? h("p", { class: "muted small" }, `${plural(d.month.added, "question")} added this month.`) : null,
-        );
-      };
-      draw();
-      return box;
-    },
-  },
-  {
-    id: "heatmap",
-    title: "Activity",
-    why: "A day-by-day grid of changes by people, and the weekly streak",
-    wide: true,
-    build: (d) => {
-      const level = (n) => (n === 0 ? 0 : n < 2 ? 1 : n < 4 ? 2 : n < 7 ? 3 : 4);
-      const grid = h(
-        "div",
-        { class: "heatmap", role: "img", "aria-label": `Changes per day over the last ${d.weekly.length} weeks` },
-        d.days.map((x) => h("span", { class: `hm l${level(x.n)}${x.future ? " future" : ""}`, title: `${x.date}: ${plural(x.n, "change")}` })),
-      );
-      const { current, best } = d.streak;
-      return h(
-        "div",
-        null,
-        h("div", { class: "scroll-x" }, grid),
         h(
           "p",
-          null,
-          current ? h("strong", null, `🔥 ${plural(current, "week")} in a row`) : h("span", { class: "muted" }, "No streak yet: any change this week starts one"),
-          h("span", { class: "muted small" }, best ? ` · best: ${plural(best, "week")}` : ""),
+          { class: "small" },
+          d.streak.current ? h("strong", null, `🔥 ${plural(d.streak.current, "week")} in a row with activity`) : h("span", { class: "muted" }, "No streak yet: any change this week starts one"),
+          d.streak.best > d.streak.current ? h("span", { class: "muted" }, ` · best: ${plural(d.streak.best, "week")}`) : null,
+          d.days_to_answer !== null ? h("span", { class: "muted" }, ` · typical time to answer: ${d.days_to_answer < 1 ? "under a day" : `${d.days_to_answer} days`}`) : null,
         ),
       );
     },
@@ -223,6 +209,7 @@ const WIDGETS = [
     id: "attention",
     title: "Needs attention",
     why: "Where a nudge would help most",
+    size: [1, 2],
     build: (d) => {
       const a = d.attention;
       const item = (n, text, href) => h("li", { class: n ? "todo" : "ok" }, h("span", { "aria-hidden": "true" }, n ? "● " : "✓ "), n ? [h("a", { href }, plural(n, "question")), ` ${text}`] : `None ${text}`);
@@ -244,70 +231,36 @@ const WIDGETS = [
     id: "answers",
     title: "Recently answered",
     why: "A wall of wins: the last questions that got an answer",
+    size: [2, 2],
     build: (d) =>
       d.recent_answers.length
         ? h("ul", { class: "plain" }, d.recent_answers.map((a) => h("li", null, statusPill(a.status, a.status_label), " ", h("a", { href: `#/q/${a.id}` }, a.title), " ", h("span", { class: "muted small" }, time(a.at, timeAgo(a.at))))))
         : empty("Nothing answered yet. The first one will show up here."),
   },
   {
-    id: "you",
-    title: "Your impact",
-    why: "Your own contributions (matched by display name)",
-    build: (d, { role }) => {
-      const y = d.you;
-      if (!y) return empty(role === "view" ? "Personal stats need a display name, which only the edit link asks for." : "Set your display name to see your stats.");
-      if (!y.actions) return empty(`Nothing under the name “${y.name}” yet. Add or change something and it will show up here.`);
-      return h(
-        "div",
-        null,
-        h(
-          "div",
-          { class: "tiles" },
-          h("span", { class: "tile" }, h("span", { class: "big" }, y.added), h("span", { class: "muted small" }, "asked")),
-          h("span", { class: "tile" }, h("span", { class: "big" }, y.answered), h("span", { class: "muted small" }, "moved to answered")),
-          h("span", { class: "tile" }, h("span", { class: "big" }, y.actions), h("span", { class: "muted small" }, "changes")),
-        ),
-        h("p", { class: "muted small" }, y.rank ? `#${y.rank} of ${plural(y.of, "person", "people")} active in the last 30 days (${plural(y.last_30_days, "change")}).` : "Nothing in the last 30 days.", y.first_at ? ` Here since ${fmtShortDate(y.first_at)}.` : ""),
-      );
-    },
-  },
-  {
-    id: "people",
-    title: "Who's active",
-    why: "Contributors over the last 30 days (group impact; names aren't verified)",
-    build: (d) => {
-      if (!d.people.length) return empty("No activity in the last 30 days.");
-      return h(
-        "div",
-        null,
-        barRows(d.people.map((p) => ({ label: p.name, n: p.actions, note: [p.added ? `${p.added} asked` : "", p.answered ? `${p.answered} answered` : ""].filter(Boolean).join(", ") }))),
-        h("p", { class: "muted small" }, `${plural(d.totals.contributors, "person", "people")} have contributed in total.`),
-      );
-    },
-  },
-  {
     id: "milestones",
     title: "Milestones",
     why: "Little group achievements to unlock",
-    wide: true,
+    size: [4, 1],
     build: (d) => {
       const done = d.milestones.filter((m) => m.done).length;
       return h(
         "div",
         null,
-        h("p", { class: "muted small" }, `${done} of ${d.milestones.length} unlocked`),
         h(
           "ul",
           { class: "badges-grid" },
           d.milestones.map((m) =>
             h(
               "li",
-              { class: `ms${m.done ? " done" : ""}`, title: m.hint },
+              { class: `ms${m.done ? " done" : ""}`, title: `${m.hint}${m.done ? " (unlocked)" : ""}` },
               h("span", { class: "ms-icon", "aria-hidden": "true" }, m.done ? "🏅" : "🔒"),
-              h("span", null, h("strong", null, m.label), h("br"), h("span", { class: "muted small" }, m.done ? "Unlocked" : `${Math.min(m.value, m.target)} / ${m.target} · ${m.hint}`)),
+              h("strong", null, m.label),
+              m.done ? null : h("span", { class: "muted small" }, `${Math.min(m.value, m.target)}/${m.target}`),
             ),
           ),
         ),
+        h("p", { class: "muted small" }, `${done} of ${d.milestones.length} unlocked`),
       );
     },
   },
@@ -330,7 +283,8 @@ export function dashboardPage(d, ctx) {
       body = h("p", { class: "error" }, `This widget failed: ${e.message}`);
     }
     const hide = h("button", { type: "button", class: "link muted small widget-hide", title: "Hide this widget (bring it back with “Choose widgets”)", "aria-label": `Hide “${w.title}”`, onclick: () => (hidden.add(w.id), save(), apply(w.id), sync(w.id)) }, "Hide");
-    const sec = h("section", { class: `panel widget${w.wide ? " wide" : ""}`, "aria-labelledby": `w-${w.id}` }, h("div", { class: "widget-head" }, h("h2", { id: `w-${w.id}` }, w.title), hide), body);
+    const [cols, rows] = w.size;
+    const sec = h("section", { class: `panel widget c${cols} r${rows}`, "aria-labelledby": `w-${w.id}` }, h("div", { class: "widget-head" }, h("h2", { id: `w-${w.id}` }, w.title), hide), h("div", { class: "widget-body" }, body));
     sections.set(w.id, sec);
     apply(w.id);
   }
@@ -354,5 +308,5 @@ export function dashboardPage(d, ctx) {
       }),
     ),
   );
-  return h("div", null, h("h1", null, "Dashboard"), h("p", { class: "muted" }, `A summary of ${ctx.name}.`), chooser, h("div", { class: "dash-grid" }, [...sections.values()]));
+  return h("div", null, ctx.back, h("h1", null, "Dashboard"), h("p", { class: "muted" }, `A summary of ${ctx.name}.`), chooser, h("div", { class: "dash-grid" }, [...sections.values()]));
 }

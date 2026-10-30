@@ -13,7 +13,7 @@ Every process state and every question status is in one of six **categories**:
 
 (`unknown` only appears on a process that couldn't be read.)
 
-Each tool on a space's list has an optional **description** ("What is it useful for?"): built-in tools come with one, and anyone with edit access can change it, on any tool. It is shown in the Rules tool list, with how many questions use the tool, and when linking a process.
+Each tool on a space's list has an optional **description** ("What is it useful for?"): built-in tools come with one, and anyone with edit access can change it, on any tool. It is shown in the Tools page, with how many questions use the tool, and when linking a process.
 
 Each of a question's fields (title, kind, status, summary, results link, start, end) is **retrieved** from the linked item or **typed** by someone. A typed value wins until someone chooses "↺ use retrieved". What can be retrieved depends on the tool:
 
@@ -23,7 +23,7 @@ Each of a question's fields (title, kind, status, summary, results link, start, 
 | From a **tool updated by hand** (Kialo, your own tools), or an item that can't be read (private) | kind (from the URL pattern) and the page title | status, summary, results, dates |
 | From a site **not on the tool list**, or **no link** (a meeting…) | nothing | everything (title, kind, status…) |
 
-A typed status uses the space's status labels (each belongs to one category; editable on the Rules page). Adding a site to the tool list later makes its links already in the register join the tool.
+A typed status uses the space's status labels (each belongs to one category; editable on the Tools page). Adding a site to the tool list later makes its links already in the register join the tool.
 
 ## Per platform
 
@@ -43,7 +43,7 @@ Verified against the live APIs in October 2026, except Metaculus (needs an accou
 | | meeting | | ✔ | before start → Not started · during → In progress · after → Concluded ("Held") · closed → Concluded (closing report as summary) · withdrawn → Withdrawn | ✔ `updatedAt` | attendees, start/end |
 | | debate | | ✔ | by start/end dates when set, else In progress · closed → Concluded (conclusions as summary) | ✔ `updatedAt` | comments |
 | | participatory process | | ✔ | before start → Not started · running → In progress (current step as the state: "Step 3 of 6: Voting") · after end → Concluded | ✔ `updatedAt` | number of steps |
-| **Consul Democracy** (add your instance once on the Rules page) | proposal | none | ✔ | open → In progress · retired as *done* → Accepted, *started* → In progress, *unfeasible* → Rejected, *duplicated*/*other* → Withdrawn | ~ latest milestone date | supports, comments |
+| **Consul Democracy** (add your instance once on the Tools page) | proposal | none | ✔ | open → In progress · retired as *done* → Accepted, *started* → In progress, *unfeasible* → Rejected, *duplicated*/*other* → Withdrawn | ~ latest milestone date | supports, comments |
 | | debate | | ✔ | always In progress (Consul debates don't close) | ✕ | votes for/against, comments |
 | | participatory budget | | ✔ | informing/drafting → Not started · accepting … reviewing ballots → In progress (the phase as the state) · finished → Concluded | ✕ | — |
 | | budget investment | | ✔ | unfeasible → Rejected · budget finished → Concluded · otherwise In progress | ~ latest milestone date | feasibility, price |

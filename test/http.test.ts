@@ -312,11 +312,12 @@ test("dashboard: totals, tools, answered questions, weeks, streak, people, miles
   assert.equal(d.weekly.length, 12);
   assert.equal(d.weekly.reduce((n: number, w: any) => n + w.added, 0), 2);
   assert.equal(d.weekly.reduce((n: number, w: any) => n + w.answered, 0), 1);
-  assert.equal(d.days.length, 84);
   assert.ok(d.streak.current >= 1);
   assert.equal(d.you.name, "Ben", "matched case-insensitively");
   assert.deepEqual([d.you.added, d.you.answered, d.you.actions], [1, 1, 2]);
-  assert.deepEqual(d.people.map((p: any) => p.name).sort(), ["Ana", "Ben"]);
+  assert.equal(d.you.of, 2, "two people active in the last 30 days");
+  assert.ok(d.you.rank >= 1 && d.you.rank <= 2);
+  assert.equal(d.people, undefined, "no leaderboard");
   assert.equal(d.since.changed, 2);
   assert.ok(d.milestones.find((m: any) => m.id === "first").done);
   assert.ok(!d.milestones.find((m: any) => m.id === "ten").done);

@@ -1,10 +1,12 @@
 // Question register — single-page UI. Hash routes:
 //   #/dashboard              summary widgets (the space name in the header links here)
-//   #/list?lane=current&q=…  the list (lanes, search, filters)
+//   #/list?lane=current&q=…  the items, as a list or (view=timeline) as bars over time; lanes, search, filters
 //   #/q/<id>                 question page
-//   #/rules                  charter, tool list, status labels; #/rules/add-tool?url=…; #/rules/tool?id=… (edit)
-//   #/timeline?…            the same questions as bars over time (same filters as the list)
+//   #/rules                  tools (tool list, status labels); #/rules/add-tool?url=…; #/rules/tool?id=… (edit)
+//   #/how                    how this works (the charter)
+//   #/timeline?…             old link: the items' timeline view
 //   #/activity               activity feed
+// No tabs: the space name opens the items, the menu (top right) has Dashboard, Tools, Activity, How this works, Export.
 import { api, qs, getName, setName, TOKEN, ApiError } from "./api.js";
 import { h, extLink, fmtDate, time, timeAgo, toast, debounce } from "./dom.js";
 import { STATE, STATE_HINT, QUESTION_STATES, ENDED, CUSTOM_TOOL_ID, itemLabel } from "./labels.js";
@@ -41,6 +43,14 @@ async function boot() {
   if (canEdit() && !getName()) await askName();
   if (canEdit()) installLinkDrop();
   window.addEventListener("hashchange", render);
+  // The menu closes on a click elsewhere, or Escape.
+  document.addEventListener("click", (e) => !e.target.closest?.(".menu") && closeMenus());
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const open = document.querySelector(".menu-list:not([hidden])");
+    closeMenus();
+    open?.parentElement.querySelector(".menu-btn").focus();
+  });
   render();
 }
 
@@ -141,14 +151,16 @@ function parseHash() {
 let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
-  const { parts, params } = parseHash();
+  let { parts, params } = parseHash();
+  // The timeline is a view of the items page.
+  if (parts[0] === "timeline") (params.set("view", "timeline"), (parts = ["list"]));
   onLinkDrop = null;
   let view;
   try {
     if (parts[0] === "q" && parts[1]) view = await pageQuestion(parts[1]);
     else if (parts[0] === "rules") view = await pageRules(parts[1], params);
     else if (parts[0] === "activity") view = await pageActivity();
-    else if (parts[0] === "timeline") view = await pageTimeline(params);
+    else if (parts[0] === "how") view = pageHow();
     else if (parts[0] === "dashboard") view = await pageDashboard();
     else view = await pageHome(params);
   } catch (e) {
@@ -170,24 +182,58 @@ async function refresh() {
 }
 
 function header(section) {
-  const tab = (key, label) => h("a", { href: `#/${key}`, class: `tab${section === key ? " current" : ""}`, "aria-current": section === key ? "page" : null }, label);
+  const item = (key, label) => h("a", { href: `#/${key}`, role: "menuitem", "aria-current": section === key ? "page" : null, onclick: closeMenus }, label);
+  const list = h(
+    "div",
+    { class: "menu-list", role: "menu", hidden: true },
+    item("dashboard", "Dashboard"),
+    item("rules", "Tools"),
+    item("activity", "Activity"),
+    item("how", "How this works"),
+    h("button", { type: "button", role: "menuitem", onclick: () => (closeMenus(), downloadExport()) }, "Export"),
+  );
+  const button = h(
+    "button",
+    {
+      type: "button",
+      class: "menu-btn",
+      "aria-haspopup": "menu",
+      "aria-expanded": "false",
+      onclick: () => {
+        const wasClosed = list.hidden;
+        closeMenus();
+        if (wasClosed) (list.hidden = false, button.setAttribute("aria-expanded", "true"));
+      },
+    },
+    h("span", { class: "burger", "aria-hidden": "true" }, h("i"), h("i"), h("i")),
+    " Menu",
+  );
   return h(
     "header",
     { class: "top" },
     h(
       "div",
       { class: "top-row" },
-      h("a", { href: "#/dashboard", class: "space-name", title: "Dashboard", "aria-current": section === "dashboard" ? "page" : null }, S.space.name),
+      h("a", { href: "#/list", class: "space-name", title: "Items" }, S.space.name),
       h(
         "div",
         { class: "who" },
         S.role === "view" ? h("span", { class: "badge" }, "View only") : null,
         canEdit() ? h("button", { class: "link", onclick: () => askName(), title: "Change your display name" }, "You: ", h("strong", null, getName() || "?"), " ✎") : null,
+        h("div", { class: "menu" }, button, list),
       ),
     ),
-    h("nav", { class: "lanes", "aria-label": "Sections" }, tab("list", "List"), tab("timeline", "Timeline"), tab("rules", "Rules"), tab("activity", "Activity")),
   );
 }
+
+/** Close the menu (all of them: there is one). */
+function closeMenus() {
+  for (const m of document.querySelectorAll(".menu")) {
+    m.querySelector(".menu-list").hidden = true;
+    m.querySelector(".menu-btn").setAttribute("aria-expanded", "false");
+  }
+}
+const backToItems = () => h("a", { href: "#/list", class: "back" }, "← Items");
 
 // ---------------------------------------------------------------- helpers
 
@@ -257,10 +303,13 @@ const PRESETS = [
 const FILTER_KEYS = ["q", "preset", "status", "tool", "item_type", "state", "source", "has_process", "related"];
 
 /**
- * Search, shortcuts and filters, shared by the list and the timeline. `route` is the page they
- * navigate within; `defaultLane` applies when no lane is chosen and nothing is searched.
+ * Search, lanes, view toggle and filters of the items page, for both views ("list" or "timeline").
+ * The default lane (no lane chosen, nothing searched) is Current for the list, All for the timeline.
  */
-function listControls(params, route, { defaultLane = "current", sort = true } = {}) {
+function listControls(params, view) {
+  const route = "list";
+  const defaultLane = view === "timeline" ? "all" : "current";
+  const sort = view === "list";
   const searching = FILTER_KEYS.some((k) => params.get(k));
   const lane = params.get("lane") ?? (searching ? "all" : defaultLane);
   const query = Object.fromEntries(FILTER_KEYS.map((k) => [k, params.get(k)]));
@@ -288,11 +337,6 @@ function listControls(params, route, { defaultLane = "current", sort = true } = 
       ),
     );
   const itemTypes = [...new Set([...S.tools.flatMap((t) => t.url_patterns.map((p) => p.item_type)), ...(S.custom_kinds ?? []).map((k) => k.kind)])];
-  // The same filters, shown the other way (list ↔ timeline).
-  const other = new URLSearchParams(params);
-  if (route === "timeline") other.delete("sort");
-  if (!other.get("lane")) other.set("lane", lane);
-  const switchLink = h("p", { class: "small" }, h("a", { href: `#/${route === "timeline" ? "list" : "timeline"}?${other}` }, route === "timeline" ? "Show these as a list" : "Show these on a timeline"));
   const presets = h(
     "div",
     { class: "presets", role: "group", "aria-label": "Shortcuts" },
@@ -314,7 +358,6 @@ function listControls(params, route, { defaultLane = "current", sort = true } = 
       sel("has_process", "Has a process", [["yes", "Yes"], ["no", "No"]]),
       sort ? sel("sort", "Order", [["", "Latest activity first"], ["created", "Newest first"]], null) : null,
     ),
-    switchLink,
   );
   const relatedChip = params.get("related") ? h("p", null, "Showing questions related to another · ", h("a", { href: `#/q/${params.get("related")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("related", "") }, "clear")) : null;
   // Lanes with counts, beside the search (the same on the list and the timeline). Withdrawn is the Status filter.
@@ -334,43 +377,49 @@ function listControls(params, route, { defaultLane = "current", sort = true } = 
       return h("a", { href: `#/${route}?${p}`, class: `sublane${lane === k ? " current" : ""}`, "aria-current": lane === k ? "page" : null }, label);
     }),
   );
-  return { searching, lane, query, controls: [h("div", { class: "toolbar" }, searchForm, laneNav), filters, relatedChip] };
+  // The same filters, shown the other way: two symbols, the current view selected.
+  const viewBtn = (v, label) => {
+    const p = new URLSearchParams(params);
+    if (!p.get("lane")) p.set("lane", lane);
+    if (v === "list") p.delete("view");
+    else (p.set("view", "timeline"), p.delete("sort"));
+    return h("a", { href: `#/list?${p}`, class: `view-btn${view === v ? " current" : ""}`, title: label, "aria-label": label, "aria-current": view === v ? "true" : null }, h("span", { class: `ico ico-${v}`, "aria-hidden": "true" }, h("i"), h("i"), h("i")));
+  };
+  const viewToggle = h("div", { class: "view-toggle", role: "group", "aria-label": "View" }, viewBtn("list", "Show as a list"), viewBtn("timeline", "Show on a timeline"));
+  return { searching, lane, query, controls: [h("div", { class: "toolbar" }, searchForm, laneNav, viewToggle), filters, relatedChip] };
 }
 
 async function pageHome(params) {
-  const { searching, lane, query, controls } = listControls(params, "list");
-  const { questions } = await api("GET", `questions${qs(query)}`);
-  const ctx = { tools: S.tools, since: S.since, space: S.space };
-  const list = questions.length
-    ? h("ul", { class: "cards" }, questions.map((q) => questionCard(q, ctx)))
-    : h("p", { class: "empty" }, searching ? "No questions match." : lane === "current" ? "No current questions. Add one above." : "Nothing here yet.");
-  return h("div", null, canEdit() ? composer() : null, controls, list);
+  const view = params.get("view") === "timeline" ? "timeline" : "list";
+  const { searching, lane, query, controls } = listControls(params, view);
+  let body;
+  if (view === "list") {
+    const { questions } = await api("GET", `questions${qs(query)}`);
+    const ctx = { tools: S.tools, since: S.since, space: S.space };
+    body = questions.length
+      ? h("ul", { class: "cards" }, questions.map((q) => questionCard(q, ctx)))
+      : h("p", { class: "empty" }, searching ? "No questions match." : lane === "current" ? "No current questions. Add one above." : "Nothing here yet.");
+  } else {
+    // The questions with a start date as bars over time, to their end (or today).
+    const { items, undated, now } = await api("GET", `timeline${qs(query)}`);
+    const undatedNote = undated
+      ? h("p", { class: "muted small" }, `${undated} question${undated === 1 ? " has" : "s have"} no start date and ${undated === 1 ? "isn't" : "aren't"} shown. Dates come from the linked process, or can be set on each question.`)
+      : null;
+    body = [
+      h("p", { class: "muted small" }, "Each question with a start date, from its start to its end (or today if it's still running). Hover a bar for its dates."),
+      items.length ? h("section", { class: "panel" }, timelineChart(items, now)) : h("p", { class: "empty" }, searching ? "No dated questions match." : "No question has a start date yet."),
+      undatedNote,
+    ];
+  }
+  return h("div", null, canEdit() ? composer() : null, controls, body);
 }
 
 async function pageDashboard() {
   const d = await api("GET", `dashboard${qs({ you: getName(), since: S.since })}`);
-  return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name });
+  return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name, back: backToItems() });
 }
 
-/** The questions with a start date as bars over time, to their end (or today). */
-async function pageTimeline(params) {
-  const { searching, query, controls } = listControls(params, "timeline", { defaultLane: "all", sort: false });
-  const { items, undated, now } = await api("GET", `timeline${qs(query)}`);
-  const undatedNote = undated
-    ? h("p", { class: "muted small" }, `${undated} question${undated === 1 ? " has" : "s have"} no start date and ${undated === 1 ? "isn't" : "aren't"} shown. Dates come from the linked process, or can be set on each question.`)
-    : null;
-  return h(
-    "div",
-    null,
-    h("h1", null, "Timeline"),
-    h("p", { class: "muted" }, "Each question with a start date, from its start to its end (or today if it's still running). Hover a bar for its dates."),
-    controls,
-    items.length ? h("section", { class: "panel" }, timelineChart(items, now)) : h("p", { class: "empty" }, searching ? "No dated questions match." : "No question has a start date yet."),
-    undatedNote,
-  );
-}
-
-/** "Ask a question, or paste a link." */
+/** "Name a process or paste its link." */
 function composer(opts = {}) {
   // An existing question with the same title or link: open it, or (on a question page) relate it.
   const existingNotice = (x, text) =>
@@ -382,7 +431,7 @@ function composer(opts = {}) {
       h("a", { href: `#/q/${x.id}` }, x.title),
       opts.relateTo && x.id !== opts.relateTo && !opts.exclude?.has(x.id) ? [" · ", h("button", { type: "button", class: "link", onclick: () => opts.onRelate(x) }, "Relate it instead")] : null,
     );
-  const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Ask a question, or paste or drop a link.", autocomplete: "off", "aria-label": "Ask a question, or paste a link" });
+  const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Name a process or paste its link.", autocomplete: "off", "aria-label": "Name a process or paste its link" });
   const panel = h("div", { class: "composer-panel" });
   let mode = "idle"; // idle | text | link
   let preview = null;
@@ -787,8 +836,9 @@ async function pageRules(sub, params) {
   return h(
     "div",
     { class: "rules" },
-    h("h1", null, "Rules"),
-    h("p", null, "How this register works: the charter, the tools that can be linked and the status labels."),
+    backToItems(),
+    h("h1", null, "Tools"),
+    h("p", null, "The tools that can be linked to an item, and the status labels."),
     h(
       "section",
       { class: "panel" },
@@ -840,9 +890,12 @@ async function pageRules(sub, params) {
       : null,
     statusLabelsPanel(),
     S.counts.removed ? await removedPanel() : null,
-    h("section", { class: "panel charter" }, renderMarkdown(S.space.charter_markdown)),
-    h("section", { class: "panel" }, h("h2", null, "Export"), h("p", null, "Download everything in this space (questions, processes, relations, tools, charter and the full activity log) as JSON."), h("button", { onclick: downloadExport }, "Download export")),
   );
+}
+
+/** The charter. */
+function pageHow() {
+  return h("div", null, backToItems(), h("section", { class: "panel charter" }, renderMarkdown(S.space.charter_markdown)));
 }
 
 async function removedPanel() {
@@ -990,7 +1043,7 @@ function toolFormPage({ url, tool }) {
   return h(
     "div",
     null,
-    h("a", { href: "#/rules", class: "back" }, "← Rules"),
+    h("a", { href: "#/rules", class: "back" }, "← Tools"),
     h("h1", null, tool ? `Edit “${tool.name}”` : "Add a tool"),
     h(
       "p",
@@ -1067,6 +1120,7 @@ async function pageActivity() {
   return h(
     "div",
     null,
+    backToItems(),
     h("h1", null, "Activity"),
     h("p", { class: "muted" }, "Every change in this space, newest first. The log can't be edited."),
     S.role === "view"

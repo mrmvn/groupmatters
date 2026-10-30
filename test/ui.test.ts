@@ -93,20 +93,51 @@ test("every lane renders", async () => {
   assert.ok(document.querySelector('main .sublane.current[href*="lane=all"]'), "the chosen lane is marked");
 });
 
-test("header: tabs are List, Timeline, Rules, Activity; the space name opens the dashboard", async () => {
+test("header: no tabs; the space name opens the items; the menu has Dashboard, Tools, Activity, How this works, Export", async () => {
   await go("#/list?lane=ended");
-  const tabs = [...document.querySelectorAll("header nav .tab")] as any[];
-  assert.deepEqual(tabs.map((a) => a.textContent), ["List", "Timeline", "Rules", "Activity"]);
-  assert.equal(document.querySelector("header .tab.current")!.textContent, "List");
-  assert.equal(document.querySelector("header a.space-name")!.getAttribute("href"), "#/dashboard");
-  await go("#/dashboard");
-  assert.equal(document.querySelector("header .tab.current"), null, "no tab is current on the dashboard");
+  assert.equal(document.querySelectorAll("header .tab, header nav").length, 0, "no tabs");
+  assert.equal(document.querySelector("header a.space-name")!.getAttribute("href"), "#/list");
+  const items = [...document.querySelectorAll("header .menu .menu-list > *")] as any[];
+  assert.deepEqual(items.map((a) => a.textContent), ["Dashboard", "Tools", "Activity", "How this works", "Export"]);
+  assert.deepEqual(items.slice(0, 4).map((a) => a.getAttribute("href")), ["#/dashboard", "#/rules", "#/activity", "#/how"]);
+  // The menu opens on its button and closes again.
+  const list = document.querySelector(".menu-list") as any;
+  const btn = document.querySelector(".menu-btn") as any;
+  assert.ok(list.hasAttribute("hidden"), "closed at first");
+  btn.click();
+  assert.ok(!list.hasAttribute("hidden"));
+  assert.equal(btn.getAttribute("aria-expanded"), "true");
+  btn.click();
+  assert.ok(list.hasAttribute("hidden"));
+  // The page opens on the bar to add an item.
+  assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name a process or paste its link.");
+  assert.match((await go("#/how")).textContent!, /How this register works/);
+  assert.match((await go("#/rules")).textContent!, /Tool list/);
+  assert.ok(document.querySelector('main a[href="#/list"]'), "a way back to the items");
+});
+
+test("items page: a list/timeline toggle (list selected by default) keeps the filters", async () => {
+  const main = await go("#/list?lane=ended");
+  const btns = [...main.querySelectorAll(".view-toggle .view-btn")] as any[];
+  assert.equal(btns.length, 2);
+  assert.ok(btns[0].classList.contains("current") && !btns[1].classList.contains("current"), "list selected");
+  assert.equal(btns[1].getAttribute("href"), "#/list?lane=ended&view=timeline");
+  assert.ok(main.querySelector(".cards"), "cards shown");
+  const tl = await go("#/list?lane=ended&view=timeline");
+  assert.ok(tl.querySelector(".view-btn.current .ico-timeline"), "timeline selected");
+  assert.ok(tl.querySelector("#composer-input"), "the add bar is on both views");
+  assert.equal(tl.querySelector(".view-toggle a")!.getAttribute("href"), "#/list?lane=ended");
+  // Shortcuts are in the filters; Withdrawn is a status.
+  assert.ok(main.querySelector(".filters .presets"));
+  assert.equal(main.querySelectorAll(".sublane").length, 3);
 });
 
 test("dashboard renders its widgets; hiding one is remembered and can be undone", async () => {
   const main = await go("#/dashboard");
   const titles = [...main.querySelectorAll(".widget h2")].map((x: any) => x.textContent);
-  for (const w of ["At a glance", "Top tools used", "Questions by status", "Needs attention", "Your impact", "Milestones"]) assert.ok(titles.includes(w), w);
+  for (const w of ["At a glance", "Top tools used", "Questions by status", "Needs attention", "Your impact", "Milestones", "Momentum, last 12 weeks"]) assert.ok(titles.includes(w), w);
+  for (const w of ["Activity", "Who's active", "Monthly goal"]) assert.ok(!titles.includes(w), `${w} was removed`);
+  assert.ok([...main.querySelectorAll(".widget")].every((el: any) => /\bc[124]\b/.test(el.className) && /\br[12]\b/.test(el.className)), "every widget has a fixed size");
   assert.ok(main.querySelector('.widget a[href="#/list?lane=all&tool=custom"]'), "tools link to the filtered list");
   assert.match(main.textContent!, /asked/, "personal widget uses the display name");
   (main.querySelector(".widget-hide") as any).click();
@@ -136,7 +167,6 @@ test("every question page renders", async () => {
 test("rules pages and activity render", async () => {
   const rules = await go("#/rules");
   assert.match(rules.textContent!, /Tool list/);
-  assert.match(rules.textContent!, /How this register works/);
   const add = await go("#/rules/add-tool?url=https%3A%2F%2Fforum.example.org%2Ft%2F1");
   assert.match(add.textContent!, /Add a tool/);
   assert.match((await go("#/activity")).textContent!, /added the question/);
@@ -299,7 +329,7 @@ test("flow: a link from a listed tool shows what will be retrieved in the detail
 
 test("timeline page: only dated questions, bars placed over time, same filters as the list, linked both ways", async () => {
   const main = await go("#/timeline");
-  assert.ok(document.querySelector('header a[href="#/timeline"].current'), "Timeline tab");
+  assert.ok(document.querySelector(".view-btn.current .ico-timeline"), "old link opens the timeline view");
   const rows = [...main.querySelectorAll(".tl-rows .tl-row")] as any[];
   const dated = repo.listQuestions(t.ctx.db, demo.space.id).filter((q) => effectiveDates(q).start);
   assert.equal(rows.length, dated.length, "only questions with a start date");
@@ -316,7 +346,7 @@ test("timeline page: only dated questions, bars placed over time, same filters a
   assert.ok(([...ended.querySelectorAll(".tl-bar")] as any[]).every((b) => /st-(accepted|rejected|concluded)/.test(b.className)));
   assert.ok(ended.querySelector('a[href="#/list?lane=ended"]'), "same filters as a list");
   const list = await go("#/list?lane=ended");
-  assert.ok(list.querySelector('a[href="#/timeline?lane=ended"]'), "and back");
+  assert.ok(list.querySelector('a[href="#/list?lane=ended&view=timeline"]'), "and back");
   assert.match((await go("#/timeline?q=zzzz-nothing")).textContent!, /No dated questions match/);
 });
 
