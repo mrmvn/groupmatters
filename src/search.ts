@@ -3,7 +3,15 @@ import type { Ctx } from "./ctx.ts";
 import type { Question, Space } from "./types.ts";
 import * as repo from "./repo.ts";
 
-export type ListedQuestion = Question & { open_objections: number };
+/** `activity_at`: the latest of the question's own activity and its process' activity on its platform. */
+export type ListedQuestion = Question & { activity_at: string };
+
+const QUIET_DAYS = 30;
+
+export const activityAt = (q: Question) => {
+  const p = q.process?.fetched?.dates?.updated_at;
+  return p && p > q.last_activity_at ? p : q.last_activity_at;
+};
 
 const fold = (s: string) =>
   s
@@ -23,48 +31,49 @@ const STOP = new Set(
 const words = (s: string) => fold(s).split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w));
 
 export function list(ctx: Ctx, space: Space, f: Record<string, string | undefined>): ListedQuestion[] {
-  const objections = repo.openObjectionCounts(ctx.db, space.id);
-  let qs: ListedQuestion[] = repo.listQuestions(ctx.db, space.id).map((q) => ({ ...q, open_objections: objections.get(q.id) ?? 0 }));
+  let qs: ListedQuestion[] = repo.listQuestions(ctx.db, space.id, { removed: f.removed === "only" ? "only" : "exclude" }).map((q) => ({ ...q, activity_at: activityAt(q) }));
   const multi = (v?: string) => (v ? v.split(",").filter(Boolean) : undefined);
 
   const statuses = multi(f.status);
   if (statuses) qs = qs.filter((q) => statuses.includes(q.status));
-  if (f.section) qs = qs.filter((q) => q.section === f.section);
+  if (f.source) qs = qs.filter((q) => q.status_source === f.source);
   const tools = multi(f.tool);
   if (tools) qs = qs.filter((q) => q.process && tools.includes(q.process.tool_id));
   if (f.item_type) qs = qs.filter((q) => q.process?.item_type === f.item_type);
   const states = multi(f.state);
   if (states) qs = qs.filter((q) => q.process?.fetched && states.includes(q.process.fetched.state));
-  if (f.mode) qs = qs.filter((q) => q.resolution.mode === f.mode);
   if (f.has_process === "yes") qs = qs.filter((q) => !!q.process);
   if (f.has_process === "no") qs = qs.filter((q) => !q.process);
-  if (f.steward) qs = qs.filter((q) => q.steward && fold(q.steward) === fold(f.steward!));
-  if (f.parent) qs = qs.filter((q) => q.parent_id === f.parent);
+  const relatedTo = f.related ?? f.parent; // `parent` is the pre-relations name
+  if (relatedTo) {
+    const ids = new Set(repo.relationsOf(ctx.db, relatedTo).map((r) => (r.from_id === relatedTo ? r.to_id : r.from_id)));
+    qs = qs.filter((q) => ids.has(q.id));
+  }
 
   switch (f.preset) {
     case "no_process":
-      qs = qs.filter((q) => !q.process && ["inbox", "active", "standing"].includes(q.status));
+      qs = qs.filter((q) => !q.process && (q.status === "not_started" || q.status === "open"));
       break;
-    case "criteria_tbd":
-      qs = qs.filter((q) => q.resolution.mode === "tbd" && !["dropped", "resolved"].includes(q.status));
+    case "quiet": {
+      // In progress, but nothing has happened for a while (here or on the platform).
+      const cutoff = new Date(ctx.now().getTime() - QUIET_DAYS * 86_400_000).toISOString();
+      qs = qs.filter((q) => q.status === "open" && q.activity_at < cutoff);
       break;
-    case "ready":
-      qs = qs.filter((q) => !!q.pending_resolution);
-      break;
-    case "objections":
-      qs = qs.filter((q) => q.open_objections > 0);
+    }
+    case "fetch_problems":
+      qs = qs.filter((q) => !!q.process?.fetched?.fetch_error);
       break;
   }
 
   if (f.q?.trim()) {
     const terms = fold(f.q).split(/\s+/).filter(Boolean);
     qs = qs.filter((q) => {
-      const hay = fold(
-        [q.title, q.why_it_matters, q.process?.framing, q.process?.fetched?.title, q.resolution_record?.synthesis].filter(Boolean).join(" \n "),
-      );
+      const hay = fold([q.title, q.why_it_matters, q.process?.framing, q.process?.fetched?.title, q.process?.item_type].filter(Boolean).join(" \n "));
       return terms.every((t) => hay.includes(t));
     });
   }
+  if (f.sort === "created") qs.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  else qs.sort((a, b) => (a.activity_at < b.activity_at ? 1 : a.activity_at > b.activity_at ? -1 : 0));
   return qs;
 }
 
@@ -86,5 +95,5 @@ export function similar(ctx: Ctx, space: Space, title: string, excludeId?: strin
   return scored
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
-    .map(({ q }) => ({ id: q.id, title: q.title, status: q.status, section: q.section }));
+    .map(({ q }) => ({ id: q.id, title: q.title, status: q.status }));
 }

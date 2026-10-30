@@ -4,3 +4,5 @@ data/
 *.sqlite
 *.sqlite-*
 .DS_Store
+*.bak
+.test-db-*/

@@ -2,9 +2,9 @@
 
 *One page for the pilot group.*
 
-**What it is.** A shared list of the questions our group wants to answer together. Each question says *where* it's being worked on (a pull request, a poll, a forecast…) and *what counts as an answer*. When it's answered, the register keeps a record.
+**What it is.** A shared list of the questions our group wants to answer together. Each question can say *where* it's being worked on (a pull request, a Loomio poll, a Polis conversation, a meeting…), and shows where it stands.
 
-**What it isn't.** A place to discuss. Discussion stays where it already happens. The register links to it.
+**What it isn't.** A place to discuss or decide. Discussion and decisions stay where they already happen. The register links to them and follows their progress.
 
 ## Getting in
 
@@ -12,53 +12,46 @@
 - The first time, you'll be asked for a **display name**. Use the name people know you by. Names aren't checked.
 - It works on a phone. You can add the page to your home screen.
 
-## The lanes
+## Statuses
 
-- **Pool**: questions on the table. Anyone can add one.
-- **Active**: questions someone has taken on. There's a limit (8 by default), so we focus.
-- **Standing**: big, open-ended questions we keep in view without expecting a final answer.
-- **Resolved**: answered questions, with what was decided and when.
-- **Archive**: parked (dormant) and dropped questions. Nothing is ever deleted.
+Every question is in one of six categories: **Not started**, **In progress**, **Accepted**, **Rejected**, **Concluded** (ended without a yes or no) or **Withdrawn**.
 
-Cards marked **★ Changed since your last visit** have news.
+- A question with a process **follows its process**: when the Loomio poll closes or the pull request is merged, the question's status changes by itself.
+- Or anyone can **set the status by hand** ("Set by hand instead…"), picking one of the group's status labels, like *Being discussed* or *Agreed*. You can go back to following the process at any time.
+
+The lanes: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **Withdrawn**. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
 
 ## Adding a question
 
-Type in the box at the top: **"Ask a question, or paste a link."**
+Type in the box at the top: **"Ask a question, or paste or drop a link."** You can also **drag a link** from another tab anywhere onto the page; on a question without a process, a dropped link becomes its process.
 
-- **Typing a question**: similar existing questions appear below. Check them first, then press *Add to the pool*.
-- **Pasting a link** (for example a GitHub pull request): the register recognises the tool and fills in the title. Rewrite it in your own words if you like.
-- If the link's tool isn't on the list, you can **add it** yourself (see Rules below).
+- **Typing a question**: similar existing questions appear below. Check them first, then press *Add question*.
+- **Pasting a link** (a GitHub pull request, a Loomio poll, a Polis conversation…): the register recognises the tool and fills in the title. Rewrite it in your own words if you like.
+- If the link's tool isn't on the list, you can **add it** yourself (see Rules below), or link it as a custom process.
 
-## Taking a question on (adopting)
+## Processes
 
-Open a question and press **Adopt**. You become its **steward**. Then say what counts as an answer. Tick one or more options; the first one that happens counts:
+On a question's page, **Link a process…** offers two choices:
 
-- **When the linked process reaches an outcome**, for example the pull request is merged or closed.
-- **On a date**: a deadline. We take whatever the process shows at that point.
-- **Default rule**: if nobody objects within the window (7 days by default).
-- **The steward confirms a condition**, for example "a majority agrees at the general meeting".
+- **A link from a listed tool.** GitHub, GitLab, public Loomio polls and threads, Polis, Decidim (any instance) and Consul (once your instance is added in Rules) are followed automatically: state, results and last activity. The ↗ next to a process opens it. Others (Kialo, your own tools, private Loomio polls) are updated by hand with **Update state…**.
+- **Custom**: a meeting, an unconference, a paper survey… Give it a kind, and optionally a title, a date and a link. Its state is set by hand.
 
-Or choose **Open-ended** to make it a Standing question.
+## Related questions
 
-## Being a steward
+On a question's page, type in the **Related questions** box: matching questions appear. Click one to relate it (or choose "This question is a duplicate of" first). If none fits, add yours as a new related question. Relations show on both questions.
 
-- Keep the link up to date. For tools that aren't updated automatically (Polis, Kialo, Loomio, Metaculus), use **Update state…** when something changes.
-- When the register says **⏵ Ready to resolve**, press **Confirm**. You can add a short statement of what we concluded.
-- Clear results (a merged pull request) are recorded automatically.
-- Answer **objections**: say what changed, then mark them as addressed.
-- You can't keep it up? Use **Hand over…**. If nobody takes it, it goes back to the pool.
+## Shortcuts
 
-## Objecting
-
-If a question uses the default rule and you disagree, press **Object…** and give your reason. That pauses the countdown until the steward addresses your objection.
+- **No process yet**: current questions not linked to anything.
+- **Quiet for 30+ days**: in progress, but nothing has happened for a month, here or on the platform.
+- **Fetch problems**: links that couldn't be read.
 
 ## Rules
 
-The **Rules** tab shows how the register works (the charter), the list of allowed tools and the settings. Anyone with edit access can **add a tool** with a short form; there's no vote. The charter and settings are changed by whoever runs the register, for now.
+The **Rules** tab shows how the register works (the charter), the list of tools and the status labels. Anyone with edit access can **add or edit a tool** (including how its states map to categories), and edit the **status labels** (each belongs to one category). The charter is changed by whoever runs the register, for now.
 
 ## Good to know
 
 - Everything that changes is recorded in **Activity**, and that record can't be edited.
-- Questions with no activity for 30 days become dormant. Anyone can bring them back.
-- A resolved question can be **reopened** if things change. The old answer stays in its history.
+- The same question (same title, ignoring case and punctuation) or the same link can't be added twice: the register points you to the existing one.
+- **Remove…** hides a question added by mistake (spam, test). It's kept and can be restored from the Rules page. For a question that was dropped or didn't run its course, set a *Withdrawn* status instead, so it stays visible.

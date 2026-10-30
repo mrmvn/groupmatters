@@ -1,0 +1,17 @@
+{
+ "data": {
+  "proposal": {
+   "id": "1",
+   "title": "Strategic plan for a 100% green city",
+   "publicCreatedAt": "2026-10-29 03:00:00 +0100",
+   "cachedVotesUp": 5,
+   "commentsCount": 4,
+   "retiredAt": null,
+   "retiredReason": null,
+   "retiredExplanation": null,
+   "milestones": {
+    "edges": []
+   }
+  }
+ }
+}

@@ -1,7 +1,7 @@
 // Data access layer: the only module that writes SQL for domain rows.
 import type { DatabaseSync } from "node:sqlite";
 import type { Ctx } from "./ctx.ts";
-import type { ActivityEvent, Objection, Process, Question, Role, Space, Tool } from "./types.ts";
+import type { ActivityEvent, Process, Question, Relation, Role, Space, Tool } from "./types.ts";
 import { DEFAULT_SETTINGS } from "./types.ts";
 import { hashToken, safeEqualHex } from "./tokens.ts";
 import { newId } from "./util.ts";
@@ -18,7 +18,7 @@ function rowToSpace(r: Row): Space {
     id: r.id,
     name: r.name,
     created_at: r.created_at,
-    settings: { ...DEFAULT_SETTINGS, ...j(r.settings_json) },
+    settings: { ...structuredClone(DEFAULT_SETTINGS), ...j(r.settings_json) },
     charter_markdown: r.charter_markdown,
   };
 }
@@ -108,6 +108,16 @@ export function insertTool(db: DatabaseSync, spaceId: string, t: Tool) {
   );
 }
 
+export function updateTool(db: DatabaseSync, spaceId: string, t: Tool) {
+  db.prepare("UPDATE tools SET name = ?, url_patterns_json = ?, state_map_json = ? WHERE space_id = ? AND id = ?").run(
+    t.name,
+    JSON.stringify(t.url_patterns),
+    s(t.state_map),
+    spaceId,
+    t.id,
+  );
+}
+
 export function setToolEnabled(db: DatabaseSync, spaceId: string, id: string, enabled: boolean) {
   db.prepare("UPDATE tools SET enabled = ? WHERE space_id = ? AND id = ?").run(enabled ? 1 : 0, spaceId, id);
 }
@@ -128,7 +138,7 @@ function rowToProcess(r: Row): ProcessRow {
     id: r.id,
     question_id: r.question_id,
     space_id: r.space_id,
-    url: r.url,
+    url: u(r.url),
     tool_id: r.tool_id,
     item_type: r.item_type,
     framing: u(r.framing),
@@ -141,7 +151,8 @@ function rowToProcess(r: Row): ProcessRow {
 }
 
 export const publicProcess = (p: ProcessRow): Process => {
-  const out: Process = { url: p.url, tool_id: p.tool_id, item_type: p.item_type, fetch_mode: p.fetch_mode };
+  const out: Process = { tool_id: p.tool_id, item_type: p.item_type, fetch_mode: p.fetch_mode };
+  if (p.url) out.url = p.url;
   if (p.framing) out.framing = p.framing;
   if (p.fetched) out.fetched = p.fetched;
   return out;
@@ -151,21 +162,12 @@ function rowToQuestion(r: Row, p?: ProcessRow): Question {
   const q: Question = {
     id: r.id,
     space_id: r.space_id,
-    section: r.section,
     title: r.title,
     why_it_matters: u(r.why_it_matters),
     status: r.status,
-    steward: u(r.steward),
-    resolution: j(r.resolution_json),
-    parent_id: u(r.parent_id),
-    duplicate_of_id: u(r.duplicate_of_id),
-    drop_reason: u(r.drop_reason),
-    resolution_record: j(r.resolution_record_json),
-    pending_resolution: j(r.pending_resolution_json),
-    default_window: j(r.default_window_json),
-    rules_payload: j(r.rules_payload_json),
-    reopened_at: u(r.reopened_at),
-    reopen_baseline_state: u(r.reopen_baseline_state),
+    status_source: r.status_source,
+    status_label: u(r.status_label),
+    removed_at: u(r.removed_at),
     created_at: r.created_at,
     created_by: r.created_by,
     last_activity_at: r.last_activity_at,
@@ -186,66 +188,28 @@ export function getQuestion(db: DatabaseSync, spaceId: string, id: string): Ques
   return rowToQuestion(r, getProcessRow(db, id));
 }
 
-export function listQuestions(db: DatabaseSync, spaceId: string): Question[] {
+export function getQuestionById(db: DatabaseSync, id: string): Question | undefined {
+  const r = db.prepare("SELECT * FROM questions WHERE id = ?").get(id) as Row | undefined;
+  return r ? rowToQuestion(r, getProcessRow(db, id)) : undefined;
+}
+
+/** Questions of a space, newest first. Removed ones only with `removed: "include"` or `"only"`. */
+export function listQuestions(db: DatabaseSync, spaceId: string, opts: { removed?: "exclude" | "include" | "only" } = {}): Question[] {
+  const removed = opts.removed ?? "exclude";
+  const where = removed === "include" ? "" : removed === "only" ? " AND removed_at IS NOT NULL" : " AND removed_at IS NULL";
   const procs = new Map<string, ProcessRow>();
   for (const r of db.prepare("SELECT * FROM processes WHERE space_id = ?").all(spaceId) as Row[]) {
     procs.set(r.question_id, rowToProcess(r));
   }
-  return (db.prepare("SELECT * FROM questions WHERE space_id = ? ORDER BY created_at DESC").all(spaceId) as Row[]).map((r) =>
+  return (db.prepare(`SELECT * FROM questions WHERE space_id = ?${where} ORDER BY created_at DESC`).all(spaceId) as Row[]).map((r) =>
     rowToQuestion(r, procs.get(r.id)),
   );
 }
 
-export function listQuestionsByStatus(db: DatabaseSync, status: string): Question[] {
-  return (db.prepare("SELECT * FROM questions WHERE status = ?").all(status) as Row[]).map((r) =>
-    rowToQuestion(r, getProcessRow(db, r.id)),
-  );
-}
-
-export function countActive(db: DatabaseSync, spaceId: string): number {
-  return (
-    db.prepare("SELECT COUNT(*) AS n FROM questions WHERE space_id = ? AND status = 'active' AND section = 'main'").get(spaceId) as Row
-  ).n;
-}
-
-const Q_COLS = [
-  "section",
-  "title",
-  "why_it_matters",
-  "status",
-  "steward",
-  "resolution_json",
-  "parent_id",
-  "duplicate_of_id",
-  "drop_reason",
-  "resolution_record_json",
-  "pending_resolution_json",
-  "default_window_json",
-  "rules_payload_json",
-  "reopened_at",
-  "reopen_baseline_state",
-  "last_activity_at",
-] as const;
+const Q_COLS = ["title", "why_it_matters", "status", "status_source", "status_label", "removed_at", "last_activity_at"] as const;
 
 function questionValues(q: Question) {
-  return [
-    q.section,
-    q.title,
-    q.why_it_matters ?? null,
-    q.status,
-    q.steward ?? null,
-    JSON.stringify(q.resolution),
-    q.parent_id ?? null,
-    q.duplicate_of_id ?? null,
-    q.drop_reason ?? null,
-    s(q.resolution_record),
-    s(q.pending_resolution),
-    s(q.default_window),
-    s(q.rules_payload),
-    q.reopened_at ?? null,
-    q.reopen_baseline_state ?? null,
-    q.last_activity_at,
-  ];
+  return [q.title, q.why_it_matters ?? null, q.status, q.status_source, q.status_label ?? null, q.removed_at ?? null, q.last_activity_at];
 }
 
 export function insertQuestion(db: DatabaseSync, q: Question) {
@@ -278,7 +242,7 @@ export function upsertProcess(
       `UPDATE processes SET url = ?, tool_id = ?, item_type = ?, framing = ?, fetch_mode = ?, fetched_json = ?,
          etag = ?, next_refresh_at = ?, fail_count = ? WHERE question_id = ?`,
     ).run(
-      p.url,
+      p.url ?? null,
       p.tool_id,
       p.item_type,
       p.framing ?? null,
@@ -297,7 +261,7 @@ export function upsertProcess(
       newId(),
       q.id,
       q.space_id,
-      p.url,
+      p.url ?? null,
       p.tool_id,
       p.item_type,
       p.framing ?? null,
@@ -321,53 +285,12 @@ export function dueProcesses(db: DatabaseSync, now: string): ProcessRow[] {
     db
       .prepare(
         `SELECT p.* FROM processes p JOIN questions q ON q.id = p.question_id
-         WHERE p.fetch_mode = 'auto' AND q.status NOT IN ('resolved','dropped')
+         WHERE p.fetch_mode = 'auto' AND p.url IS NOT NULL AND q.removed_at IS NULL
            AND (p.next_refresh_at IS NULL OR p.next_refresh_at <= ?)
          ORDER BY p.next_refresh_at`,
       )
       .all(now) as Row[]
   ).map(rowToProcess);
-}
-
-// ---------- objections ----------
-
-function rowToObjection(r: Row): Objection {
-  const o: Objection = {
-    id: r.id,
-    question_id: r.question_id,
-    raised_by: r.raised_by,
-    raised_at: r.raised_at,
-    reason: r.reason,
-  };
-  if (r.addressed_at) {
-    o.addressed_at = r.addressed_at;
-    o.addressed_by = r.addressed_by;
-    if (r.address_note) o.address_note = r.address_note;
-  }
-  return o;
-}
-
-export function listObjections(db: DatabaseSync, questionId: string): Objection[] {
-  return (db.prepare("SELECT * FROM objections WHERE question_id = ? ORDER BY raised_at").all(questionId) as Row[]).map(rowToObjection);
-}
-
-export function openObjectionCounts(db: DatabaseSync, spaceId: string): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const r of db
-    .prepare("SELECT question_id, COUNT(*) AS n FROM objections WHERE space_id = ? AND addressed_at IS NULL GROUP BY question_id")
-    .all(spaceId) as Row[])
-    m.set(r.question_id, r.n);
-  return m;
-}
-
-export function insertObjection(db: DatabaseSync, spaceId: string, o: Objection) {
-  db.prepare(
-    "INSERT INTO objections (id, question_id, space_id, raised_by, raised_at, reason) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(o.id, o.question_id, spaceId, o.raised_by, o.raised_at, o.reason);
-}
-
-export function addressObjection(db: DatabaseSync, id: string, by: string, at: string, note: string) {
-  db.prepare("UPDATE objections SET addressed_at = ?, addressed_by = ?, address_note = ? WHERE id = ?").run(at, by, note, id);
 }
 
 // ---------- activity ----------
@@ -412,8 +335,34 @@ export function allActivity(db: DatabaseSync, spaceId: string): ActivityEvent[] 
   return (db.prepare("SELECT * FROM activity WHERE space_id = ? ORDER BY id").all(spaceId) as Row[]).map(rowToEvent);
 }
 
-/** Last time a display name did anything in the space (used for "steward inactive" rule). */
-export function lastActionBy(db: DatabaseSync, spaceId: string, actor: string): string | undefined {
-  const r = db.prepare("SELECT MAX(at) AS at FROM activity WHERE space_id = ? AND actor = ?").get(spaceId, actor) as Row;
-  return u(r?.at);
+
+
+// ---------- relations ----------
+
+function rowToRelation(r: Row): Relation {
+  return { from_id: r.from_id, to_id: r.to_id, kind: r.kind, created_at: r.created_at, created_by: r.created_by };
+}
+
+/** Relations touching a question, in either direction. */
+export function relationsOf(db: DatabaseSync, questionId: string): Relation[] {
+  return (db.prepare("SELECT * FROM relations WHERE from_id = ? OR to_id = ? ORDER BY created_at").all(questionId, questionId) as Row[]).map(rowToRelation);
+}
+
+export function listRelations(db: DatabaseSync, spaceId: string): Relation[] {
+  return (db.prepare("SELECT * FROM relations WHERE space_id = ? ORDER BY created_at, from_id, to_id").all(spaceId) as Row[]).map(rowToRelation);
+}
+
+export function insertRelation(db: DatabaseSync, spaceId: string, r: Relation) {
+  db.prepare("INSERT INTO relations (space_id, from_id, to_id, kind, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)").run(
+    spaceId,
+    r.from_id,
+    r.to_id,
+    r.kind,
+    r.created_at,
+    r.created_by,
+  );
+}
+
+export function deleteRelation(db: DatabaseSync, r: Pick<Relation, "from_id" | "to_id" | "kind">) {
+  db.prepare("DELETE FROM relations WHERE from_id = ? AND to_id = ? AND kind = ?").run(r.from_id, r.to_id, r.kind);
 }

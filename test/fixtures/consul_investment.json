@@ -1,0 +1,18 @@
+{
+ "data": {
+  "budget": {
+   "name": "Participatory budgeting 2026",
+   "phase": "balloting",
+   "investment": {
+    "id": "1",
+    "title": " Chargers for electric vehicles.",
+    "feasibility": "feasible",
+    "price": "24000000",
+    "commentsCount": 0,
+    "milestones": {
+     "edges": []
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,154 @@
+{
+ "data": {
+  "participatoryProcess": {
+   "id": "40",
+   "title": {
+    "translations": [
+     {
+      "locale": "ca",
+      "text": "Co-creem el roadmap"
+     },
+     {
+      "locale": "en",
+      "text": "Co-creating the roadmap"
+     },
+     {
+      "locale": "es",
+      "text": "Co-creamos el roadmap"
+     }
+    ]
+   },
+   "startDate": "2025-09-30",
+   "endDate": "2030-01-16",
+   "updatedAt": "2026-09-17T11:57:25+02:00",
+   "steps": [
+    {
+     "title": {
+      "translations": [
+       {
+        "locale": "ca",
+        "text": "Obert"
+       },
+       {
+        "locale": "en",
+        "text": "Propose strategic directions"
+       },
+       {
+        "locale": "es",
+        "text": "Abierto"
+       }
+      ]
+     },
+     "active": false,
+     "startDate": "2025-09-30T15:00:00+02:00",
+     "endDate": "2025-10-15T23:59:00+02:00"
+    },
+    {
+     "title": {
+      "translations": [
+       {
+        "locale": "ca",
+        "text": null
+       },
+       {
+        "locale": "en",
+        "text": "Prioritize together"
+       },
+       {
+        "locale": "es",
+        "text": null
+       }
+      ]
+     },
+     "active": false,
+     "startDate": "2025-10-16T00:00:00+02:00",
+     "endDate": "2025-10-30T23:59:00+01:00"
+    },
+    {
+     "title": {
+      "translations": [
+       {
+        "locale": "ca",
+        "text": null
+       },
+       {
+        "locale": "en",
+        "text": "Proposals submission"
+       },
+       {
+        "locale": "es",
+        "text": null
+       }
+      ]
+     },
+     "active": false,
+     "startDate": "2025-11-04T08:00:00+01:00",
+     "endDate": "2025-11-30T23:59:00+01:00"
+    },
+    {
+     "title": {
+      "translations": [
+       {
+        "locale": "ca",
+        "text": null
+       },
+       {
+        "locale": "en",
+        "text": "Define sizes"
+       },
+       {
+        "locale": "es",
+        "text": null
+       }
+      ]
+     },
+     "active": false,
+     "startDate": "2025-12-01T00:00:00+01:00",
+     "endDate": "2025-12-15T23:59:00+01:00"
+    },
+    {
+     "title": {
+      "translations": [
+       {
+        "locale": "ca",
+        "text": null
+       },
+       {
+        "locale": "en",
+        "text": "Voting"
+       },
+       {
+        "locale": "es",
+        "text": null
+       }
+      ]
+     },
+     "active": false,
+     "startDate": "2025-12-16T00:00:00+01:00",
+     "endDate": "2025-12-30T23:59:00+01:00"
+    },
+    {
+     "title": {
+      "translations": [
+       {
+        "locale": "ca",
+        "text": null
+       },
+       {
+        "locale": "en",
+        "text": "Review and announcement of selected proposals"
+       },
+       {
+        "locale": "es",
+        "text": null
+       }
+      ]
+     },
+     "active": true,
+     "startDate": "2026-01-09T00:00:00+01:00",
+     "endDate": "2026-01-16T23:59:00+01:00"
+    }
+   ]
+  }
+ }
+}

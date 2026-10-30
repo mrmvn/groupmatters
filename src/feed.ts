@@ -3,6 +3,15 @@ import type { Ctx } from "./ctx.ts";
 import type { ActivityEvent, Space } from "./types.ts";
 import * as repo from "./repo.ts";
 
+const STATE: Record<string, string> = {
+  not_started: "Not started",
+  open: "In progress",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  concluded: "Concluded",
+  withdrawn: "Withdrawn",
+};
+
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
 
@@ -13,17 +22,11 @@ export function describeEvent(e: ActivityEvent, titles: Map<string, string>): st
     case "question.created":
       return `${e.actor} added ${t}`;
     case "question.status_changed":
-      return `${t}: ${d.from} → ${d.to}${d.reason ? ` (${d.reason})` : ""}`;
+      return `${t}: ${STATE[d.from] ?? d.from} → ${d.label ?? STATE[d.to] ?? d.to}${d.source === "process" ? " (from its process)" : ""}`;
     case "process.state_changed":
-      return `${t}: process is now ${d.after?.outcome_summary ?? d.after?.state}`;
-    case "resolution.pending":
-      return `${t} is ready to resolve`;
-    case "resolution.confirmed":
-      return `${t} was resolved (${d.record?.outcome ?? "concluded"})`;
-    case "objection.raised":
-      return `${e.actor} objected to ${t}: ${d.reason}`;
-    case "objection.addressed":
-      return `${e.actor} addressed an objection on ${t}`;
+      return `${t}: process is now ${d.after?.outcome_summary ?? STATE[d.after?.state] ?? d.after?.state}`;
+    case "relation.added":
+      return `${e.actor} related ${t} to “${d.other_title}”`;
     case "tool.added":
       return `Tool added: ${d.tool?.name}`;
     case "charter.changed":
@@ -37,7 +40,7 @@ export function describeEvent(e: ActivityEvent, titles: Map<string, string>): st
 
 export function atomFeed(ctx: Ctx, space: Space, token: string): string {
   const events = repo.listActivity(ctx.db, space.id, { limit: 50 });
-  const titles = new Map(repo.listQuestions(ctx.db, space.id).map((q) => [q.id, q.title]));
+  const titles = new Map(repo.listQuestions(ctx.db, space.id, { removed: "include" }).map((q) => [q.id, q.title]));
   const base = `${ctx.config.publicUrl}/s/${token}`;
   const updated = events[0]?.at ?? space.created_at;
   const entries = events

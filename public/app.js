@@ -1,17 +1,19 @@
 // Question register — single-page UI. Hash routes:
-//   #/list?lane=active&q=…   home (lanes, search, filters)
+//   #/list?lane=current&q=…  home (lanes, search, filters)
 //   #/q/<id>                 question page
-//   #/rules                  charter, tool list, settings; #/rules/add-tool?url=…
+//   #/rules                  charter, tool list, status labels; #/rules/add-tool?url=…; #/rules/tool?id=… (edit)
 //   #/activity               activity feed
 import { api, qs, getName, setName, TOKEN, ApiError } from "./api.js";
-import { h, extLink, fmtDate, fmtDuration, time, timeAgo, toast, debounce } from "./dom.js";
-import { STATUS, STATE, TRIGGER, TERMINAL, itemLabel, criteriaSummary } from "./labels.js";
-import { statusPill, statePill, processChip, questionCard, criteriaEditor, activityItem, toolName } from "./components.js";
+import { h, extLink, fmtDate, time, timeAgo, toast, debounce, toLocalInput, fromLocalInput } from "./dom.js";
+import { STATE, STATE_HINT, QUESTION_STATES, ENDED, CUSTOM_TOOL_ID, itemLabel } from "./labels.js";
+import { statusPill, questionPill, statePill, processChip, processKind, questionCard, activityItem, toolName, mappingEditor } from "./components.js";
 import { renderMarkdown } from "./md.js";
 
 const app = document.getElementById("app");
-const S = { space: null, role: "view", tools: [], counts: {}, active_count: 0, since: null };
+const S = { space: null, role: "view", tools: [], counts: {}, since: null };
 const canEdit = () => S.role === "edit";
+/** Removed questions are read-only until restored. */
+const canEditQ = (q) => canEdit() && !q.removed_at;
 
 // ---------------------------------------------------------------- bootstrap
 
@@ -32,6 +34,7 @@ async function boot() {
   S.since = localStorage.getItem(key);
   localStorage.setItem(key, new Date().toISOString());
   if (canEdit() && !getName()) await askName();
+  if (canEdit()) installLinkDrop();
   window.addEventListener("hashchange", render);
   render();
 }
@@ -68,6 +71,60 @@ function askName() {
   });
 }
 
+// ---------------------------------------------------------------- drag and drop a link
+
+/** What the current page does with a dropped link (set by each page); otherwise: add it from the home page. */
+let onLinkDrop = null;
+let pendingDrop = null;
+
+/** The first http(s) link in a drop: text/uri-list (browsers' link drags), then plain text. */
+function linkFromDrop(dt) {
+  const list = (dt.getData("text/uri-list") || "").split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.startsWith("#"));
+  const text = (dt.getData("text/plain") || "").trim();
+  const v = list || text;
+  return /^https?:\/\/\S+$/i.test(v) ? v : null;
+}
+
+function installLinkDrop() {
+  let depth = 0;
+  const hasLink = (e) => [...(e.dataTransfer?.types ?? [])].some((t) => t === "text/uri-list" || t === "text/plain");
+  const done = () => ((depth = 0), document.body.classList.remove("dropping"));
+  document.addEventListener("dragenter", (e) => {
+    if (!hasLink(e)) return;
+    depth++;
+    document.body.classList.add("dropping");
+  });
+  document.addEventListener("dragleave", () => {
+    if (--depth <= 0) done();
+  });
+  document.addEventListener("dragover", (e) => {
+    if (!hasLink(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  });
+  document.addEventListener("drop", (e) => {
+    done();
+    // Let text fields receive dropped text as usual.
+    if (e.target?.closest?.("input, textarea")) return;
+    const url = linkFromDrop(e.dataTransfer);
+    e.preventDefault();
+    if (!url) return toast("Drop a link (https://…) to add it", "error");
+    if (onLinkDrop) return onLinkDrop(url);
+    pendingDrop = url;
+    location.hash = "#/list?lane=current";
+  });
+}
+
+/** Put a link in the home composer, as if pasted. */
+function fillComposer(url) {
+  const input = document.getElementById("composer-input");
+  if (!input) return false;
+  input.value = url;
+  input.dispatchEvent(new Event("input"));
+  input.focus();
+  return true;
+}
+
 // ---------------------------------------------------------------- routing
 
 function parseHash() {
@@ -80,6 +137,7 @@ let renderSeq = 0;
 async function render() {
   const seq = ++renderSeq;
   const { parts, params } = parseHash();
+  onLinkDrop = null;
   let view;
   try {
     if (parts[0] === "q" && parts[1]) view = await pageQuestion(parts[1]);
@@ -91,7 +149,11 @@ async function render() {
   }
   if (seq !== renderSeq) return;
   app.replaceChildren(header(parts[0] ?? "list", params), h("main", { id: "main" }, view));
-  if (!parts[0] || parts[0] === "list") document.getElementById("composer-input")?.focus({ preventScroll: true });
+  if (!parts[0] || parts[0] === "list") {
+    document.getElementById("composer-input")?.focus({ preventScroll: true });
+    if (canEdit()) onLinkDrop = fillComposer;
+    if (pendingDrop && fillComposer(pendingDrop)) pendingDrop = null;
+  }
 }
 
 /** Re-load space counts and re-render the current page. */
@@ -101,8 +163,9 @@ async function refresh() {
 }
 
 function header(section, params) {
-  const c = S.counts.main ?? {};
-  const lane = params.get("lane") ?? (section === "list" && ![...params.keys()].length ? "active" : null);
+  const c = S.counts ?? {};
+  const n = (states) => states.reduce((a, s) => a + (c[s] ?? 0), 0);
+  const lane = params.get("lane") ?? (section === "list" && ![...params.keys()].length ? "current" : null);
   const tab = (key, label, href) =>
     h("a", { href, class: `tab${(section === "list" && lane === key) || (section === key && !lane) ? " current" : ""}`, "aria-current": section === "list" && lane === key ? "page" : null }, label);
   return h(
@@ -111,7 +174,7 @@ function header(section, params) {
     h(
       "div",
       { class: "top-row" },
-      h("a", { href: "#/list?lane=active", class: "space-name" }, S.space.name),
+      h("a", { href: "#/list?lane=current", class: "space-name" }, S.space.name),
       h(
         "div",
         { class: "who" },
@@ -122,16 +185,15 @@ function header(section, params) {
     h(
       "nav",
       { class: "lanes", "aria-label": "Lanes" },
-      tab("inbox", `Pool (${c.inbox ?? 0})`, "#/list?lane=inbox"),
-      tab("active", `Active (${S.active_count}/${S.space.settings.active_cap})`, "#/list?lane=active"),
-      tab("standing", `Standing (${c.standing ?? 0})`, "#/list?lane=standing"),
-      tab("resolved", `Resolved (${c.resolved ?? 0})`, "#/list?lane=resolved"),
-      tab("archive", `Archive (${(c.dormant ?? 0) + (c.dropped ?? 0)})`, "#/list?lane=archive"),
+      tab("current", `Current (${n(["not_started", "open"])})`, "#/list?lane=current"),
+      tab("ended", `Ended (${n(ENDED)})`, "#/list?lane=ended"),
+      tab("withdrawn", `Withdrawn (${n(["withdrawn"])})`, "#/list?lane=withdrawn"),
       h("a", { href: "#/rules", class: `tab${section === "rules" ? " current" : ""}` }, "Rules"),
       h("a", { href: "#/activity", class: `tab${section === "activity" ? " current" : ""}` }, "Activity"),
     ),
   );
 }
+
 
 // ---------------------------------------------------------------- helpers
 
@@ -187,31 +249,25 @@ const linesToList = (s) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
 // ---------------------------------------------------------------- home
 
-const LANE_STATUS = { inbox: "inbox", active: "active", standing: "standing", resolved: "resolved", archive: "dormant,dropped", all: "" };
+const LANES = {
+  current: { label: "Current (not started, in progress)", status: "not_started,open" },
+  ended: { label: "Ended (accepted, rejected, concluded)", status: ENDED.join(",") },
+  withdrawn: { label: "Withdrawn", status: "withdrawn" },
+  all: { label: "All", status: "" },
+};
 const PRESETS = [
   ["no_process", "No process yet"],
-  ["criteria_tbd", "Criteria TBD"],
-  ["ready", "Ready to resolve"],
-  ["objections", "Objections open"],
+  ["quiet", "Quiet for 30+ days"],
+  ["fetch_problems", "Fetch problems"],
 ];
+const FILTER_KEYS = ["q", "preset", "status", "tool", "item_type", "state", "source", "has_process", "related"];
 
 async function pageHome(params) {
-  const searching = params.get("q") || params.get("preset") || params.get("tool") || params.get("state") || params.get("mode") || params.get("has_process") || params.get("steward") || params.get("parent");
-  const lane = params.get("lane") ?? (searching ? "all" : "active");
-  const section = params.get("section") ?? "main";
-  const query = {
-    status: LANE_STATUS[lane] ?? "",
-    section: section === "all" ? "" : section,
-    q: params.get("q"),
-    preset: params.get("preset"),
-    tool: params.get("tool"),
-    item_type: params.get("item_type"),
-    state: params.get("state"),
-    mode: params.get("mode"),
-    has_process: params.get("has_process"),
-    steward: params.get("steward"),
-    parent: params.get("parent"),
-  };
+  const searching = FILTER_KEYS.some((k) => params.get(k));
+  const lane = params.get("lane") ?? (searching ? "all" : "current");
+  const query = Object.fromEntries(FILTER_KEYS.map((k) => [k, params.get(k)]));
+  query.status = params.get("status") || (LANES[lane]?.status ?? "");
+  query.sort = params.get("sort");
   const { questions } = await api("GET", `questions${qs(query)}`);
 
   const setParam = (k, v) => {
@@ -224,53 +280,62 @@ async function pageHome(params) {
   const searchInput = h("input", { type: "search", placeholder: "Search questions…", value: params.get("q") ?? "", "aria-label": "Search questions" });
   const searchForm = h("form", { class: "search", role: "search", onsubmit: (e) => (e.preventDefault(), setParam("q", searchInput.value.trim())) }, searchInput, h("button", { type: "submit" }, "Search"));
 
-  const sel = (key, label, options) =>
+  const sel = (key, label, options, anyLabel = "Any") =>
     field(
       label,
       h(
         "select",
         { onchange: (e) => setParam(key, e.target.value) },
-        h("option", { value: "" }, "Any"),
-        options.map(([v, l]) => h("option", { value: v, selected: params.get(key) === v }, l)),
+        anyLabel ? h("option", { value: "" }, anyLabel) : null,
+        options.map(([v, l]) => h("option", { value: v, selected: (params.get(key) ?? "") === v }, l)),
       ),
     );
   const itemTypes = [...new Set(S.tools.flatMap((t) => t.url_patterns.map((p) => p.item_type)))];
   const filters = h(
     "details",
-    { class: "filters", open: !!(query.tool || query.state || query.mode || query.has_process || query.steward || query.item_type || params.get("section") || params.get("lane") === "all") },
+    { class: "filters", open: ["status", "tool", "state", "source", "has_process", "item_type", "sort"].some((k) => params.get(k)) || params.get("lane") === "all" },
     h("summary", null, "Filters"),
     h(
       "div",
       { class: "filter-grid" },
-      sel("lane", "Status", [["all", "All"], ...Object.keys(LANE_STATUS).filter((k) => k !== "all").map((k) => [k, k === "archive" ? "Archive (dormant, dropped)" : STATUS[k].label])]),
-      sel("section", "Section", [["main", "Main"], ["rules", "Rules"], ["all", "Both"]]),
-      sel("tool", "Tool", S.tools.map((t) => [t.id, t.name])),
+      sel("lane", "Lane", Object.entries(LANES).map(([k, l]) => [k, l.label]), null),
+      sel("status", "Status", QUESTION_STATES.map((s) => [s, STATE[s]])),
+      sel("source", "Status comes from", [["process", "The process"], ["manual", "Set by hand"]]),
+      sel("tool", "Tool", [[CUSTOM_TOOL_ID, "Custom process"], ...S.tools.map((t) => [t.id, t.name])]),
       sel("item_type", "Item type", itemTypes.map((t) => [t, itemLabel(t)])),
       sel("state", "Process state", Object.entries(STATE)),
-      sel("mode", "Answer criteria", [["tbd", "Not decided"], ["open", "Open-ended"], ["criteria", "Set"]]),
       sel("has_process", "Has a process", [["yes", "Yes"], ["no", "No"]]),
-      field("Steward", h("input", { type: "text", value: params.get("steward") ?? "", onchange: (e) => setParam("steward", e.target.value.trim()) })),
+      sel("sort", "Order", [["", "Latest activity first"], ["created", "Newest first"]], null),
     ),
   );
   const presets = h(
     "div",
-    { class: "presets", role: "group", "aria-label": "Curator shortcuts" },
+    { class: "presets", role: "group", "aria-label": "Shortcuts" },
     PRESETS.map(([k, l]) => h("button", { type: "button", class: `chip-btn${params.get("preset") === k ? " on" : ""}`, "aria-pressed": params.get("preset") === k ? "true" : "false", onclick: () => setParam("preset", params.get("preset") === k ? "" : k) }, l)),
   );
 
-  const parentChip = params.get("parent") ? h("p", null, "Showing questions related to another · ", h("a", { href: `#/q/${params.get("parent")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("parent", "") }, "clear")) : null;
-  const laneInfo = lane === "active" ? h("p", { class: "muted" }, `${S.active_count} of ${S.space.settings.active_cap} active slots used.`) : null;
+  const relatedChip = params.get("related") ? h("p", null, "Showing questions related to another · ", h("a", { href: `#/q/${params.get("related")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("related", "") }, "clear")) : null;
   const ctx = { tools: S.tools, since: S.since, space: S.space };
   const list = questions.length
     ? h("ul", { class: "cards" }, questions.map((q) => questionCard(q, ctx)))
-    : h("p", { class: "empty" }, searching ? "No questions match." : lane === "inbox" ? "The pool is empty." : "Nothing here yet.");
+    : h("p", { class: "empty" }, searching ? "No questions match." : lane === "current" ? "No current questions. Add one above." : "Nothing here yet.");
 
-  return h("div", null, canEdit() ? composer() : null, h("div", { class: "toolbar" }, searchForm, presets), filters, parentChip, laneInfo, list);
+  return h("div", null, canEdit() ? composer() : null, h("div", { class: "toolbar" }, searchForm, presets), filters, relatedChip, list);
 }
 
 /** "Ask a question, or paste a link." */
 function composer(opts = {}) {
-  const input = h("input", { id: opts.parentId ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Ask a question, or paste a link.", autocomplete: "off", "aria-label": "Ask a question, or paste a link" });
+  // An existing question with the same title or link: open it, or (on a question page) relate it.
+  const existingNotice = (x, text) =>
+    h(
+      "div",
+      { class: "notice-existing" },
+      text,
+      " ",
+      h("a", { href: `#/q/${x.id}` }, x.title),
+      opts.relateTo && x.id !== opts.relateTo && !opts.exclude?.has(x.id) ? [" · ", h("button", { type: "button", class: "link", onclick: () => opts.onRelate(x) }, "Relate it instead")] : null,
+    );
+  const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Ask a question, or paste or drop a link.", autocomplete: "off", "aria-label": "Ask a question, or paste a link" });
   const panel = h("div", { class: "composer-panel" });
   let mode = "idle"; // idle | text | link
   let preview = null;
@@ -279,16 +344,27 @@ function composer(opts = {}) {
   const framing = h("textarea", { rows: 2, placeholder: "Framing (optional): how this process interprets the question, and its limits" });
   const title = h("input", { type: "text", maxlength: 300 });
   const hints = h("div", { class: "hints" });
-  const submitBtn = h("button", { type: "submit", class: "primary" }, "Add to the pool");
+  const submitBtn = h("button", { type: "submit", class: "primary" }, opts.relateTo ? "Add as a new related question" : "Add question");
 
   const loadHints = debounce(async (t) => {
     if (t.length < 4) return hints.replaceChildren();
     try {
-      const { similar } = await api("GET", `similar${qs({ title: t })}`);
+      const { similar } = await api("GET", `similar${qs({ title: t, exclude: opts.relateTo })}`);
+      const list = opts.exclude ? similar.filter((s) => !opts.exclude.has(s.id)) : similar;
+      if (!list.length) return hints.replaceChildren();
+      const kindNow = opts.kind?.() ?? "related";
+      // On a question page, a suggestion is a link target: clicking it relates the existing question.
+      const item = (s) =>
+        opts.relateTo
+          ? h("li", null, h("button", { type: "button", class: "link", title: kindNow === "duplicate" ? "Mark this question as a duplicate of it" : "Relate this existing question", onclick: () => opts.onRelate(s) }, kindNow === "duplicate" ? "≡ " : "＋ ", s.title), " ", statusPill(s.status), " ", h("a", { href: `#/q/${s.id}`, class: "muted small", title: "Open it" }, "↗"))
+          : h("li", null, h("a", { href: `#/q/${s.id}` }, s.title), " ", statusPill(s.status));
       hints.replaceChildren(
-        similar.length
-          ? h("div", null, h("span", { class: "muted small" }, "Already asked? "), h("ul", { class: "hint-list" }, similar.map((s) => h("li", null, h("a", { href: `#/q/${s.id}` }, s.title), " ", statusPill(s.status)))))
-          : "",
+        h(
+          "div",
+          null,
+          h("span", { class: "muted small" }, opts.relateTo ? "Relate an existing question, or add yours as a new one: " : "Already asked? "),
+          h("ul", { class: "hint-list" }, list.map(item)),
+        ),
       );
     } catch {}
   }, 300);
@@ -314,8 +390,13 @@ function composer(opts = {}) {
       );
       return;
     }
+    if (preview.existing) {
+      mode = "idle";
+      panel.replaceChildren(existingNotice(preview.existing, "This link is already tracked by"));
+      return;
+    }
     mode = "link";
-    title.value = preview.fetched?.title ?? "";
+    title.value = preview.title ?? "";
     title.placeholder = "Write the question in the group's words";
     loadHints(title.value);
     panel.replaceChildren(
@@ -323,10 +404,10 @@ function composer(opts = {}) {
         "div",
         { class: "link-preview" },
         h("strong", null, preview.tool_name), " · ", itemLabel(preview.item_type),
-        preview.fetched ? [" · ", statePill(preview.fetched.state), preview.fetched.outcome_summary ? ` ${preview.fetched.outcome_summary}` : ""] : preview.fetch_mode === "manual" ? h("span", { class: "muted" }, " · state is updated by hand") : null,
-        preview.fetch_error ? h("p", { class: "warn" }, `Couldn't fetch details: ${preview.fetch_error}`) : null,
+        preview.fetched ? [" · ", statePill(preview.fetched.state, preview.fetched.raw_state), preview.fetched.outcome_summary ? ` ${preview.fetched.outcome_summary}` : ""] : preview.fetch_mode === "manual" ? h("span", { class: "muted" }, " · state is updated by hand") : null,
+        preview.fetch_error ? h("p", { class: "warn" }, preview.fetch_mode === "manual" ? `${preview.fetch_error}: its state will be updated by hand.` : `Couldn't fetch details: ${preview.fetch_error}`) : null,
       ),
-      field("Question", title, "Prefilled from the linked item when possible. Edit it into the group's own words."),
+      field("Question", title, preview.title ? "Prefilled from the linked page. Edit it into the group's own words." : "Write the question in the group's own words."),
       hints,
       why,
       framing,
@@ -363,11 +444,21 @@ function composer(opts = {}) {
         e.preventDefault();
         const v = input.value.trim();
         if (!v || mode === "idle") return;
-        const body = { why_it_matters: why.value, parent_id: opts.parentId, section: opts.section };
+        const body = { why_it_matters: why.value, related_id: opts.relateTo };
         if (mode === "link") Object.assign(body, { title: title.value, process_url: v, framing: framing.value });
         else body.title = v;
         submitBtn.disabled = true;
-        const r = await act(() => api("POST", "questions", body), "Added to the pool");
+        let r;
+        try {
+          r = await api("POST", "questions", body);
+          toast("Question added", "ok");
+        } catch (err) {
+          if (err.code === "duplicate_title" || err.code === "duplicate_link") {
+            panel.querySelector(".notice-existing")?.remove();
+            panel.prepend(existingNotice(err.details.existing, err.code === "duplicate_link" ? "This link is already tracked by" : "Already in the register:"));
+          } else if (err instanceof ApiError && err.code === "name_required") await askName();
+          else toast(err.message, "error");
+        }
         submitBtn.disabled = false;
         if (r) {
           await loadSpace();
@@ -386,7 +477,6 @@ function composer(opts = {}) {
 async function pageQuestion(id) {
   const d = await api("GET", `questions/${id}`);
   const q = d.question;
-  const isSteward = q.steward && getName() && q.steward.toLowerCase() === getName().toLowerCase();
   const formSlot = h("div", { class: "form-slot" });
   const openForm = (f) => {
     formSlot.replaceChildren(f);
@@ -394,419 +484,326 @@ async function pageQuestion(id) {
     f.querySelector("input:not([type=radio]):not([type=checkbox]), textarea, select")?.focus();
   };
 
-  const meta = h(
-    "dl",
-    { class: "meta" },
-    h("dt", null, "Steward"),
-    h("dd", null, q.steward ?? h("span", { class: "muted" }, "nobody yet")),
-    h("dt", null, "Added"),
-    h("dd", null, q.created_by, " · ", time(q.created_at)),
-    d.parent ? [h("dt", null, "Related to"), h("dd", null, h("a", { href: `#/q/${d.parent.id}` }, d.parent.title))] : null,
-    d.duplicate_of ? [h("dt", null, "Same as"), h("dd", null, h("a", { href: `#/q/${d.duplicate_of.id}` }, d.duplicate_of.title))] : null,
-    q.status === "dropped" && q.drop_reason ? [h("dt", null, "Dropped because"), h("dd", null, q.drop_reason)] : null,
-  );
+  const editForm = () =>
+    inlineForm("Edit question", "Save", () => {
+      const title = h("input", { type: "text", required: true, maxlength: 300, value: q.title });
+      const why = h("textarea", { rows: 3, value: q.why_it_matters ?? "" });
+      return { body: [field("Question", title), field("Why it matters", why)], submit: () => act(() => api("PATCH", `questions/${q.id}`, { title: title.value, why_it_matters: why.value }), "Saved") };
+    });
+
+  const removeForm = () =>
+    inlineForm(
+      "Remove this question",
+      "Remove",
+      () => {
+        const reason = h("input", { type: "text", maxlength: 1000, placeholder: "Optional: spam, added by mistake, test…" });
+        return {
+          body: [
+            h("p", null, "Removed questions are hidden from lists, but kept: anyone can restore them from the Rules page. For a question that was dropped or didn't run its course, set a ", h("em", null, "Withdrawn"), " status instead."),
+            field("Reason", reason),
+          ],
+          submit: () => act(() => api("POST", `questions/${q.id}/remove`, { reason: reason.value }), "Question removed"),
+        };
+      },
+      { danger: true },
+    );
 
   const top = h(
     "div",
     { class: "q-head" },
-    h("a", { href: q.section === "rules" ? "#/rules" : `#/list?lane=${q.status === "dormant" || q.status === "dropped" ? "archive" : q.status}`, class: "back" }, "← Back"),
+    h("a", { href: `#/list?lane=${q.status === "withdrawn" ? "withdrawn" : ENDED.includes(q.status) ? "ended" : "current"}`, class: "back" }, "← Back"),
     h("h1", null, q.title),
-    h("div", { class: "row" }, statusPill(q.status), q.section === "rules" ? h("span", { class: "badge rules" }, "Rules question") : null),
+    h(
+      "div",
+      { class: "row" },
+      questionPill(q),
+      canEdit() && !q.removed_at ? [h("button", { class: "link", onclick: () => openForm(editForm()) }, "Edit"), h("button", { class: "link danger-link", onclick: () => openForm(removeForm()) }, "Remove…")] : null,
+    ),
+    q.removed_at
+      ? h(
+          "div",
+          { class: "removed-banner" },
+          h("strong", null, "Removed"),
+          " ",
+          time(q.removed_at, timeAgo(q.removed_at)),
+          ". It's hidden from lists and its process is no longer refreshed.",
+          canEdit() ? [" ", h("button", { onclick: async () => (await act(() => api("POST", `questions/${q.id}/restore`), "Restored")) && refresh() }, "Restore")] : null,
+        )
+      : null,
     q.why_it_matters ? h("p", { class: "why" }, q.why_it_matters) : null,
-    meta,
+    h("dl", { class: "meta" }, h("dt", null, "Added"), h("dd", null, q.created_by, " · ", time(q.created_at))),
   );
+
+  // A dropped link becomes this question's process, when it has none yet.
+  if (canEditQ(q) && !q.process) onLinkDrop = (url) => openForm(attachForm(q, false, url));
 
   return h(
     "div",
     { class: "question" },
     top,
-    resolutionBlock(q, d, isSteward, openForm),
-    q.rules_payload ? payloadBlock(q.rules_payload) : null,
-    processBlock(q, d, isSteward, openForm),
-    canEdit() ? actionsBlock(q, d, isSteward, openForm) : null,
+    q.removed_at ? null : statusBlock(q, openForm),
+    processBlock(q, d, openForm),
     formSlot,
     relationsBlock(q, d),
     h("section", { class: "panel" }, h("h2", null, "History"), h("ul", { class: "activity" }, d.activity.map((e) => activityItem(e)))),
   );
 }
 
-function resolutionBlock(q, d, isSteward, openForm) {
-  const parts = [h("h2", null, "Answered when…"), h("p", { class: "criteria" }, criteriaSummary(q.resolution, q.process, S.space.settings.default_rule_days))];
-  const openObj = d.objections.filter((o) => !o.addressed_at);
-
-  if (q.default_window && q.status === "active") {
-    const w = q.default_window;
-    if (openObj.length || w.paused_remaining_ms != null)
-      parts.push(h("p", { class: "window paused" }, `⏸ Objection window paused: ${openObj.length} open objection${openObj.length === 1 ? "" : "s"}. The steward can address them or change the criteria.`));
-    else {
-      const left = new Date(w.ends_at).getTime() - Date.now();
-      parts.push(h("p", { class: "window" }, left > 0 ? ["⏳ Objection window ends in ", h("strong", null, fmtDuration(left)), ` (${fmtDate(w.ends_at)})`] : "⏳ Objection window has closed; checking shortly."));
-    }
-  }
-
-  if (d.objections.length) {
-    parts.push(
-      h(
-        "ul",
-        { class: "objections" },
-        d.objections.map((o) =>
-          h(
-            "li",
-            { class: o.addressed_at ? "addressed" : "open" },
-            h("div", null, h("strong", null, o.addressed_at ? "Addressed objection" : "✋ Objection"), " by ", o.raised_by, " · ", time(o.raised_at, timeAgo(o.raised_at))),
-            h("blockquote", null, o.reason),
-            o.addressed_at
-              ? h("p", { class: "muted" }, `${o.addressed_by}: “${o.address_note}”`)
-              : canEdit() && (isSteward || !q.steward)
-                ? h(
-                    "button",
-                    {
-                      onclick: () =>
-                        openForm(
-                          inlineForm("Address this objection", "Mark as addressed", () => {
-                            const note = h("textarea", { rows: 3, required: true, placeholder: "What changed, or why you're going ahead" });
-                            return {
-                              body: [h("blockquote", null, o.reason), field("Your note", note, "When all objections are addressed, the window resumes.")],
-                              submit: () => act(() => api("POST", `questions/${q.id}/address`, { objection_id: o.id, note: note.value }), "Objection addressed"),
-                            };
-                          }),
-                        ),
-                    },
-                    "Address",
-                  )
-                : null,
-          ),
-        ),
-      ),
-    );
-  }
-
-  if (q.pending_resolution) {
-    const p = q.pending_resolution;
-    const canConfirm = canEdit() && (isSteward || !q.steward || d.steward_inactive);
-    parts.push(
-      h(
-        "div",
-        { class: "ready" },
-        h("p", null, h("strong", null, "⏵ Ready to resolve: "), TRIGGER[p.triggered_by], " (", time(p.triggered_at, timeAgo(p.triggered_at)), ")."),
-        canConfirm
-          ? h("button", { class: "primary", onclick: () => openForm(confirmForm(q)) }, "Confirm resolution…")
-          : h("p", { class: "muted" }, `Waiting for the steward (${q.steward}) to confirm. Anyone can confirm if they've been inactive for 7 days.`),
-      ),
-    );
-  }
-
-  const rec = q.resolution_record;
-  if (q.status === "resolved" && rec) {
-    const snap = rec.snapshot?.process;
-    parts.push(
-      h(
-        "div",
-        { class: "record" },
-        h("p", null, h("strong", null, "✔ Resolved"), " ", time(rec.resolved_at), " because ", TRIGGER[rec.triggered_by], ". Confirmed by ", rec.confirmed_by === "system" ? "the system (clear outcome)" : rec.confirmed_by, "."),
-        rec.outcome ? h("p", null, "Outcome: ", statePill(rec.outcome)) : null,
-        rec.attested ? h("p", null, "Attested: “", rec.attested, "”") : null,
-        rec.synthesis ? h("div", { class: "synthesis" }, h("h3", null, "What we concluded"), renderMarkdown(rec.synthesis)) : null,
-        h(
-          "details",
-          null,
-          h("summary", null, "Snapshot at resolution"),
-          h(
-            "dl",
-            { class: "meta" },
-            h("dt", null, "Question"),
-            h("dd", null, rec.snapshot.question.title),
-            rec.snapshot.question.framing ? [h("dt", null, "Framing"), h("dd", null, rec.snapshot.question.framing)] : null,
-            snap ? [h("dt", null, "Process"), h("dd", null, extLink(snap.url, snap.fetched?.title ?? snap.url))] : null,
-            snap?.fetched ? [h("dt", null, "State then"), h("dd", null, statePill(snap.fetched.state), " ", snap.fetched.outcome_summary ?? "", " · fetched ", fmtDate(snap.fetched.fetched_at))] : null,
-            snap?.fetched?.extra ? [h("dt", null, "Details"), h("dd", null, Object.entries(snap.fetched.extra).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join(" · "))] : null,
-          ),
-        ),
-      ),
-    );
-  }
-  return h("section", { class: "panel" }, parts);
+/** Select of the space's status labels (value = label), grouped by category. */
+function labelSelect(current) {
+  const labels = S.space.settings.status_labels;
+  return h(
+    "select",
+    { required: true },
+    QUESTION_STATES.filter((s) => labels.some((l) => l.state === s)).map((s) =>
+      h("optgroup", { label: STATE[s] }, labels.filter((l) => l.state === s).map((l) => h("option", { value: l.label, selected: l.label === current }, l.label))),
+    ),
+  );
 }
 
-function confirmForm(q) {
-  return inlineForm("Confirm the resolution", "Confirm", () => {
-    const synthesis = h("textarea", { rows: 4, placeholder: "Optional: the group's own statement of the answer (markdown allowed)" });
-    const suggested = q.pending_resolution.suggested_outcome ?? "concluded";
-    const outcome = h("select", null, TERMINAL.map((s) => h("option", { value: s, selected: s === suggested }, STATE[s])));
-    return {
-      body: [
-        field("Outcome", outcome, q.rules_payload ? "Rules proposals are applied only when the outcome is “accepted”." : "Suggested from what triggered the resolution; change it if the outcome was different."),
-        field("Synthesis", synthesis),
-      ],
-      submit: () => act(() => api("POST", `questions/${q.id}/confirm`, { synthesis: synthesis.value, outcome: outcome.value }), "Resolved"),
-    };
-  });
-}
-
-function payloadBlock(p) {
-  let body;
-  if (p.kind === "add_tool")
-    body = [
-      h("p", null, "If accepted, this tool is added to the tool list: ", h("strong", null, p.tool.name), " (updated by hand)."),
-      h("ul", null, p.tool.url_patterns.map((u) => h("li", null, h("code", null, u.pattern), " → ", itemLabel(u.item_type)))),
-      p.tool.state_map ? h("p", { class: "muted" }, "States: ", Object.entries(p.tool.state_map).map(([k, v]) => `${k} (${STATE[v]})`).join(", ")) : null,
-    ];
-  else if (p.kind === "change_charter")
-    body = [
-      p.settings ? h("p", null, "If accepted, these settings change: ", Object.entries(p.settings).map(([k, v]) => `${k.replace(/_/g, " ")} → ${v}`).join(", ")) : null,
-      p.charter_markdown ? h("details", null, h("summary", null, "Proposed charter text"), renderMarkdown(p.charter_markdown)) : null,
-    ];
-  else if (p.kind === "set_tool_enabled") body = h("p", null, `If accepted, the tool “${toolName(S.tools, p.tool_id)}” is ${p.enabled ? "enabled" : "disabled"}.`);
-  return h("section", { class: "panel proposal" }, h("h2", null, "Proposal"), body);
-}
-
-function processBlock(q, d, isSteward, openForm) {
-  const p = q.process;
-  const closed = q.status === "resolved" || q.status === "dropped";
-  const attachForm = (replace) =>
-    inlineForm(replace ? "Replace the linked process" : "Link a process", replace ? "Replace" : "Link", () => {
-      const url = h("input", { type: "url", required: true, placeholder: "https://…", value: "" });
-      const framing = h("textarea", { rows: 2, placeholder: "Optional", value: p?.framing ?? "" });
+function statusBlock(q, openForm) {
+  const follows = q.status_source === "process";
+  const manualForm = () =>
+    inlineForm("Set the status by hand", "Set status", () => {
+      const select = labelSelect(q.status_label);
+      const note = h("input", { type: "text", maxlength: 1000, placeholder: "Optional: why (shown in the history)" });
       return {
         body: [
-          field("Link", url, `Accepted tools: ${S.tools.filter((t) => t.enabled).map((t) => t.name).join(", ")}.`),
-          field("Framing", framing, "How this process interprets the question, and its limits."),
+          field("Status", select, "The space's status labels, grouped by category. They're edited on the Rules page."),
+          field("Note", note),
+          q.process ? h("p", { class: "muted small" }, "The status stops following the process until you switch back.") : null,
         ],
-        submit: async () => {
-          try {
-            await api("PUT", `questions/${q.id}/process`, { url: url.value, framing: framing.value });
-            toast("Process linked", "ok");
-            return true;
-          } catch (e) {
-            if (e.code === "unknown_tool") {
-              toast("That link isn't from a listed tool. You can add the tool in Rules.", "error");
-              location.hash = `#/rules/add-tool${qs({ url: url.value })}`;
-              return false;
-            }
-            throw e;
-          }
-        },
+        submit: () => act(() => api("PUT", `questions/${q.id}/status`, { source: "manual", label: select.value, note: note.value }), "Status set"),
       };
     });
-
-  if (!p) {
-    return h(
-      "section",
-      { class: "panel" },
-      h("h2", null, "Process"),
-      h("p", { class: "muted" }, "No process linked. A process is the place where the question is worked on: a pull request, a poll, a forecast…"),
-      canEdit() && !closed ? h("button", { onclick: () => openForm(attachForm(false)) }, "Link a process…") : null,
-    );
-  }
-  const f = p.fetched;
-  const tool = d.tool;
-  const extra = f?.extra ? Object.entries(f.extra).filter(([k]) => k !== "results_url") : [];
-  const manualForm = () =>
-    inlineForm("Update the process state", "Save", () => {
-      const states = tool?.state_map ? Object.entries(tool.state_map) : [];
-      const select = h(
-        "select",
-        { required: true },
-        h("option", { value: "" }, "Choose…"),
-        states.map(([label, st]) => h("option", { value: `${st}|${label}`, selected: f?.raw_state === label }, `${label} (${STATE[st]})`)),
-        h("optgroup", { label: "Other" }, Object.entries(STATE).map(([st, l]) => h("option", { value: `${st}|`, selected: !states.length && f?.state === st }, l))),
-      );
-      const summary = h("input", { type: "text", maxlength: 300, value: f?.outcome_summary ?? "", placeholder: "e.g. 63% yes, 41 votes" });
-      const results = h("input", { type: "url", value: f?.extra?.results_url ?? "", placeholder: "https://… (report, results page)" });
-      return {
-        body: [field("State", select), field("Outcome summary", summary, "Optional, shown on cards."), field("Link to results", results, "Optional.")],
-        submit: () => {
-          const [state, raw] = select.value.split("|");
-          return act(() => api("POST", `questions/${q.id}/process/manual`, { state, raw_state: raw || undefined, outcome_summary: summary.value, results_url: results.value }), "State updated");
-        },
-      };
-    });
-
+  const follow = async () => (await act(() => api("PUT", `questions/${q.id}/status`, { source: "process" }), "Status follows the process")) && refresh();
   return h(
     "section",
-    { class: "panel process" },
-    h("h2", null, "Process"),
-    h("p", null, h("strong", null, toolName(S.tools, p.tool_id)), " · ", itemLabel(p.item_type), " · ", extLink(p.url, f?.title ?? "open the link ↗")),
+    { class: "panel" },
+    h("h2", null, "Status"),
     h(
-      "dl",
-      { class: "meta" },
-      h("dt", null, "State"),
-      h("dd", null, f ? [statePill(f.state), f.outcome_summary ? ` ${f.outcome_summary}` : "", f.raw_state && f.raw_state !== f.outcome_summary ? h("span", { class: "muted" }, ` (${f.raw_state})`) : ""] : h("span", { class: "muted" }, "not set yet")),
-      f?.dates?.opens_at ? [h("dt", null, "Opened"), h("dd", null, time(f.dates.opens_at))] : null,
-      f?.dates?.closes_at ? [h("dt", null, "Closes"), h("dd", null, time(f.dates.closes_at))] : null,
-      f?.dates?.resolved_at ? [h("dt", null, "Ended"), h("dd", null, time(f.dates.resolved_at))] : null,
-      extra.length ? [h("dt", null, "Details"), h("dd", null, extra.map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join(" · "))] : null,
-      f?.extra?.results_url ? [h("dt", null, "Results"), h("dd", null, extLink(String(f.extra.results_url)))] : null,
-      p.framing ? [h("dt", null, "Framing"), h("dd", null, p.framing)] : null,
-      h("dt", null, p.fetch_mode === "auto" ? "Last checked" : "Updated"),
-      h("dd", null, f ? time(f.fetched_at, timeAgo(f.fetched_at)) : "never", p.fetch_mode === "manual" ? h("span", { class: "muted" }, " · updated by hand") : ""),
-      f?.fetch_error ? [h("dt", null, "Problem"), h("dd", { class: "warn" }, f.fetch_error)] : null,
-      tool && !tool.enabled ? [h("dt", null, "Note"), h("dd", { class: "warn" }, "This tool is disabled; the state is no longer refreshed.")] : null,
+      "p",
+      null,
+      questionPill(q),
+      " ",
+      h("span", { class: "muted" }, follows ? `${STATE[q.status]} · follows the process` : `${q.status_label && q.status_label !== STATE[q.status] ? `${STATE[q.status]} · ` : ""}set by hand`),
     ),
-    canEdit() && !closed
+    h("p", { class: "muted small" }, STATE_HINT[q.status]),
+    canEdit()
       ? h(
           "div",
           { class: "row" },
-          p.fetch_mode === "auto"
-            ? h("button", { onclick: async () => { const r = await act(() => api("POST", `questions/${q.id}/process/refresh`)); if (r) { toast(r.refresh?.error ? `Refresh failed: ${r.refresh.error}` : r.refresh?.skipped ? `Not refreshed: ${r.refresh.skipped}` : r.refresh?.changed ? "State changed" : "No change", r.refresh?.error ? "error" : "ok"); await refresh(); } } }, "↻ Refresh")
-            : isSteward || !q.steward
-              ? h("button", { onclick: () => openForm(manualForm()) }, "Update state…")
-              : null,
-          h(
-            "button",
-            {
-              onclick: () =>
-                openForm(
-                  inlineForm("Edit framing", "Save", () => {
-                    const t = h("textarea", { rows: 3, value: p.framing ?? "" });
-                    return { body: field("Framing", t, "How this process interprets the question, and its limits."), submit: () => act(() => api("PATCH", `questions/${q.id}/process`, { framing: t.value }), "Saved") };
-                  }),
-                ),
-            },
-            "Edit framing",
-          ),
-          h("button", { onclick: () => openForm(attachForm(true)) }, "Replace link…"),
-          h(
-            "button",
-            {
-              class: "danger-link",
-              onclick: async () => {
-                if (!confirm("Remove the linked process? Its outcome criterion is removed too.")) return;
-                if (await act(() => api("DELETE", `questions/${q.id}/process`), "Process removed")) await refresh();
-              },
-            },
-            "Remove",
-          ),
+          h("button", { onclick: () => openForm(manualForm()) }, follows ? "Set by hand instead…" : "Change status…"),
+          !follows && q.process ? h("button", { onclick: follow }, "Follow the process") : null,
         )
       : null,
   );
 }
 
-function actionsBlock(q, d, isSteward, openForm) {
-  const btns = [];
-  const btn = (label, onclick, cls) => btns.push(h("button", { class: cls, onclick }, label));
-  const steward = isSteward || !q.steward;
-  const others = async () => (await api("GET", "questions")).questions.filter((x) => x.id !== q.id);
+/** Link a process: a link from a listed tool, or a custom process described by hand. */
+function attachForm(q, replace, prefillUrl) {
+  return inlineForm(replace ? "Replace the process" : "Link a process", replace ? "Replace" : "Link", () => {
+    const p = q.process;
+    const isCustom = p?.tool_id === CUSTOM_TOOL_ID;
+    const name = `kind-${Math.random().toString(36).slice(2)}`;
+    let kind = isCustom ? "custom" : "link";
+    const url = h("input", { type: "url", placeholder: "https://…", value: prefillUrl ?? (!isCustom && p?.url ? p.url : "") });
+    const cKind = h("input", { type: "text", maxlength: 60, placeholder: "e.g. Meeting, Unconference, Paper survey", value: isCustom ? p.item_type : "", list: `${name}-kinds` });
+    const kinds = h("datalist", { id: `${name}-kinds` }, ["Meeting", "General assembly", "Unconference", "Workshop", "Survey", "Working group"].map((k) => h("option", { value: k })));
+    const cTitle = h("input", { type: "text", maxlength: 300, placeholder: "Optional, e.g. Spring general assembly", value: isCustom ? (p.fetched?.title ?? "") : "" });
+    const cUrl = h("input", { type: "url", placeholder: "Optional: https://… (notes, event page)", value: isCustom ? (p.url ?? "") : "" });
+    const cWhen = h("input", { type: "datetime-local", value: isCustom && p.fetched?.dates?.opens_at ? toLocalInput(p.fetched.dates.opens_at) : "" });
+    const framing = h("textarea", { rows: 2, placeholder: "Optional", value: p?.framing ?? "" });
+    const linkBox = h("div", null, field("Link", url, `Tools on the list: ${S.tools.filter((t) => t.enabled).map((t) => t.name).join(", ")}.`));
+    const customBox = h("div", null, field("Kind of process", cKind), kinds, field("Title", cTitle), field("When", cWhen), field("Link", cUrl), h("p", { class: "muted small" }, "Its state is set by hand, using the space's status labels."));
+    const sync = () => ((linkBox.hidden = kind !== "link"), (customBox.hidden = kind !== "custom"), (url.required = kind === "link"), (cKind.required = kind === "custom"));
+    sync();
+    const radio = (v, label) => h("label", null, h("input", { type: "radio", name, value: v, checked: kind === v, onchange: () => ((kind = v), sync()) }), " ", label);
+    return {
+      body: [
+        h("div", { class: "radios" }, radio("link", "A link from a listed tool"), radio("custom", "Custom: a meeting, an unconference… (link optional)")),
+        linkBox,
+        customBox,
+        field("Framing", framing, "How this process interprets the question, and its limits."),
+      ],
+      submit: async () => {
+        const body =
+          kind === "custom"
+            ? { custom: { kind: cKind.value, title: cTitle.value, url: cUrl.value, when: fromLocalInput(cWhen.value) }, framing: framing.value }
+            : { url: url.value, framing: framing.value };
+        try {
+          await api("PUT", `questions/${q.id}/process`, body);
+          toast("Process linked", "ok");
+          return true;
+        } catch (e) {
+          if (e.code === "unknown_tool") {
+            toast("That link isn't from a listed tool. Add the tool, or use a custom process.", "error");
+            location.hash = `#/rules/add-tool${qs({ url: url.value })}`;
+            return false;
+          }
+          throw e;
+        }
+      },
+    };
+  });
+}
 
-  const reasonForm = (title, submitLabel, path, success, required = true, extra) =>
-    inlineForm(title, submitLabel, () => {
-      const reason = h("textarea", { rows: 2, required });
-      return { body: [extra?.text ? h("p", null, extra.text) : null, field(required ? "Reason" : "Reason (optional)", reason)], submit: () => act(() => api("POST", `questions/${q.id}/${path}`, { reason: reason.value }), success) };
-    });
+/** Hand-set process states: the tool's own states, or the space's status labels for custom processes. */
+function manualStateForm(q, tool) {
+  const f = q.process.fetched;
+  return inlineForm("Update the process state", "Save", () => {
+    const custom = q.process.tool_id === CUSTOM_TOOL_ID;
+    const states = custom ? S.space.settings.status_labels.map((l) => [l.label, l.state]) : tool?.state_map ? Object.entries(tool.state_map) : [];
+    const select = h(
+      "select",
+      { required: true },
+      h("option", { value: "" }, "Choose…"),
+      states.map(([label, st]) => h("option", { value: `${st}|${label}`, selected: f?.raw_state === label }, `${label} (${STATE[st]})`)),
+      h("optgroup", { label: "Categories" }, QUESTION_STATES.map((st) => h("option", { value: `${st}|`, selected: !states.length && f?.state === st }, STATE[st]))),
+    );
+    const summary = h("input", { type: "text", maxlength: 300, value: f?.outcome_summary ?? "", placeholder: "e.g. 63% yes, 41 votes" });
+    const results = h("input", { type: "url", value: f?.extra?.results_url ?? "", placeholder: "https://… (report, minutes, results page)" });
+    return {
+      body: [field("State", select), field("Summary", summary, "Optional, shown on cards."), field("Link to results", results, "Optional.")],
+      submit: () => {
+        const [state, raw] = select.value.split("|");
+        return act(() => api("POST", `questions/${q.id}/process/manual`, { state, raw_state: raw || undefined, outcome_summary: summary.value, results_url: results.value }), "State updated");
+      },
+    };
+  });
+}
 
-  const adoptForm = () =>
-    inlineForm("Adopt this question", "Adopt", () => {
-      const ed = criteriaEditor({ resolution: q.resolution.mode === "tbd" ? { mode: "criteria", criteria: q.section === "rules" ? [{ kind: "default_rule" }] : [] } : q.resolution, hasProcess: !!q.process, section: q.section, defaultDays: S.space.settings.default_rule_days, allowModes: ["criteria", "open"] });
-      return {
-        body: [
-          h("p", null, "You'll become the steward: you keep it moving, answer objections and confirm the resolution. Say what will count as an answer."),
-          q.section === "main" ? h("p", { class: "muted" }, `${S.active_count}/${S.space.settings.active_cap} active slots used.`) : null,
-          ed.el,
-        ],
-        submit: () => act(() => api("POST", `questions/${q.id}/adopt`, { resolution: ed.value() }), "Adopted"),
-      };
-    });
-
-  const criteriaForm = (modes) =>
-    inlineForm("Answer criteria", "Save", () => {
-      const ed = criteriaEditor({ resolution: q.resolution, hasProcess: !!q.process, section: q.section, defaultDays: S.space.settings.default_rule_days, allowModes: modes });
-      return { body: ed.el, submit: () => act(() => api("PUT", `questions/${q.id}/resolution`, ed.value()), "Criteria saved") };
-    });
-
-  switch (q.status) {
-    case "inbox":
-      btn("Adopt…", () => openForm(adoptForm()), "primary");
-      btn("Set criteria…", () => openForm(criteriaForm(["tbd", "open", "criteria"])));
-      break;
-    case "active":
-      if (q.default_window) btn("Object…", () => openForm(inlineForm("Object", "Raise objection", () => {
-        const reason = h("textarea", { rows: 3, required: true, placeholder: "What's your concern?" });
-        return { body: [h("p", null, "An objection pauses the default rule until the steward addresses it."), field("Reason", reason)], submit: () => act(() => api("POST", `questions/${q.id}/object`, { reason: reason.value }), "Objection recorded") };
-      })));
-      if (steward && q.resolution.criteria.some((c) => c.kind === "attested"))
-        btn("Attest…", () => openForm(inlineForm("Attest that the condition is met", "Attest and resolve", () => {
-          const c = q.resolution.criteria.find((c) => c.kind === "attested");
-          const att = h("textarea", { rows: 2, required: true, placeholder: "What happened, when, who was there…" });
-          const outcome = h("select", null, TERMINAL.map((s) => h("option", { value: s, selected: s === "accepted" }, STATE[s])));
-          const syn = h("textarea", { rows: 3, placeholder: "Optional: the group's own statement of the answer" });
-          return { body: [h("p", null, "Condition: “", c.description, "”"), field("What you're attesting", att), field("Outcome", outcome), field("Synthesis", syn)], submit: () => act(() => api("POST", `questions/${q.id}/attest`, { attested: att.value, outcome: outcome.value, synthesis: syn.value }), "Resolved") };
-        })), "primary");
-      if (steward) btn("Change criteria…", () => openForm(criteriaForm(["criteria"])));
-      if (steward) btn("Park", () => openForm(reasonForm("Park this question", "Park", "park", "Parked", false, { text: "Parked questions go to the archive (dormant) and free an active slot. Anyone can bring them back." })));
-      break;
-    case "standing":
-      if (steward) btn("Make active…", () => openForm(inlineForm("Make it active", "Make active", () => {
-        const ed = criteriaEditor({ resolution: { mode: "criteria", criteria: [] }, hasProcess: !!q.process, section: q.section, defaultDays: S.space.settings.default_rule_days, allowModes: ["criteria"] });
-        return { body: ed.el, submit: () => act(() => api("POST", `questions/${q.id}/activate`, { resolution: ed.value() }), "Now active") };
-      })), "primary");
-      if (steward) btn("Park", () => openForm(reasonForm("Park this question", "Park", "park", "Parked", false)));
-      break;
-    case "dormant":
-      btn("Adopt…", () => openForm(adoptForm()), "primary");
-      btn("Back to the pool", async () => (await act(() => api("POST", `questions/${q.id}/revive`), "Back in the pool")) && refresh());
-      btn("Set criteria…", () => openForm(criteriaForm(["tbd", "open", "criteria"])));
-      break;
-    case "resolved":
-      btn("Reopen…", () => openForm(reasonForm("Reopen this question", "Reopen", "reopen", "Reopened", true, { text: "The current resolution stays in the history. The active limit applies." })));
-      break;
-    case "dropped":
-      btn("Restore to the pool…", () => openForm(reasonForm("Restore to the pool", "Restore", "restore", "Restored")));
-      break;
+function processBlock(q, d, openForm) {
+  const p = q.process;
+  if (!p) {
+    return h(
+      "section",
+      { class: "panel" },
+      h("h2", null, "Process"),
+      h("p", { class: "muted" }, "No process linked. A process is where the question is worked on: a pull request, a poll, a Polis conversation, a meeting…"),
+      canEditQ(q) ? h("button", { onclick: () => openForm(attachForm(q, false)) }, "Link a process…") : null,
+    );
   }
-
-  if (q.steward && isSteward)
-    btn("Hand over…", () => openForm(inlineForm("Hand over stewardship", "Hand over", () => {
-      const to = h("input", { type: "text", maxlength: 60, placeholder: "Their display name (leave empty for nobody)" });
-      return { body: [field("New steward", to, q.status === "active" || q.status === "standing" ? "With nobody, the question goes back to the pool." : undefined)], submit: () => act(() => api("POST", `questions/${q.id}/hand_over`, { to: to.value }), "Stewardship handed over") };
-    })));
-  if (q.status !== "inbox" && q.status !== "dropped" && !isSteward) btn(q.steward ? "Take over stewardship" : "Become steward", async () => (await act(() => api("POST", `questions/${q.id}/take_over`), "You're the steward now")) && refresh());
-
-  if (q.status !== "resolved" && q.status !== "dropped" && steward)
-    btn("Drop…", () => openForm(inlineForm("Drop this question", "Drop", () => {
-      const reason = h("textarea", { rows: 2, required: true, placeholder: "Duplicate, out of scope, withdrawn…" });
-      const dup = h("select", null, h("option", { value: "" }, "Loading…"));
-      others().then((list) => dup.replaceChildren(h("option", { value: "" }, "— not a duplicate —"), list.filter((x) => x.status !== "dropped").map((x) => h("option", { value: x.id }, x.title))));
-      return { body: [field("Reason", reason), field("Same as… (optional)", dup, "If it's a duplicate, choose the original.")], submit: () => act(() => api("POST", `questions/${q.id}/drop`, { reason: reason.value, duplicate_of_id: dup.value || undefined }), "Dropped") };
-    }, { danger: true })), "danger-link");
-
-  btn("Edit…", () => openForm(inlineForm("Edit question", "Save", () => {
-    const title = h("input", { type: "text", required: true, maxlength: 300, value: q.title });
-    const why = h("textarea", { rows: 3, value: q.why_it_matters ?? "" });
-    const parent = h("select", null, h("option", { value: q.parent_id ?? "" }, "Loading…"));
-    others().then((list) => parent.replaceChildren(h("option", { value: "" }, "— none —"), list.filter((x) => x.status !== "dropped").map((x) => h("option", { value: x.id, selected: x.id === q.parent_id }, x.title))));
-    return { body: [field("Question", title), field("Why it matters", why), field("Related to", parent)], submit: () => act(() => api("PATCH", `questions/${q.id}`, { title: title.value, why_it_matters: why.value, parent_id: parent.value }), "Saved") };
-  })));
-
-  return h("section", { class: "panel actions" }, h("h2", { class: "visually-hidden" }, "Actions"), h("div", { class: "row wrap" }, btns));
+  const f = p.fetched;
+  const tool = d.tool;
+  const hasState = f && f.state !== "unknown";
+  const extra = f?.extra ? Object.entries(f.extra).filter(([k]) => k !== "results_url" && k !== "outcome") : [];
+  const refreshBtn = h(
+    "button",
+    {
+      onclick: async () => {
+        const r = await act(() => api("POST", `questions/${q.id}/process/refresh`));
+        if (!r) return;
+        toast(r.refresh?.error ? `Refresh failed: ${r.refresh.error}` : r.refresh?.skipped ? `Not refreshed: ${r.refresh.skipped}` : r.refresh?.changed ? "State changed" : "No change", r.refresh?.error ? "error" : "ok");
+        await refresh();
+      },
+    },
+    "↻ Refresh",
+  );
+  const framingForm = () =>
+    inlineForm("Edit framing", "Save", () => {
+      const t = h("textarea", { rows: 3, value: p.framing ?? "" });
+      return { body: field("Framing", t, "How this process interprets the question, and its limits."), submit: () => act(() => api("PATCH", `questions/${q.id}/process`, { framing: t.value }), "Saved") };
+    });
+  const remove = async () => {
+    if (!confirm("Remove the linked process? The question keeps its current status, set by hand.")) return;
+    if (await act(() => api("DELETE", `questions/${q.id}/process`), "Process removed")) await refresh();
+  };
+  return h(
+    "section",
+    { class: "panel process" },
+    h("h2", null, "Process"),
+    h("p", null, h("strong", null, processKind(p, S.tools)), f?.title || p.url ? " · " : "", p.url ? extLink(p.url, f?.title ?? "open the link ↗") : (f?.title ?? "")),
+    h(
+      "dl",
+      { class: "meta" },
+      h("dt", null, "State"),
+      h("dd", null, hasState ? [statePill(f.state, f.raw_state), " ", h("span", { class: "muted" }, STATE[f.state]), f.outcome_summary ? h("div", null, f.outcome_summary) : ""] : h("span", { class: "muted" }, "not set yet")),
+      f?.extra?.outcome ? [h("dt", null, "Outcome"), h("dd", null, String(f.extra.outcome))] : null,
+      f?.dates?.opens_at ? [h("dt", null, p.tool_id === CUSTOM_TOOL_ID ? "When" : "Opened"), h("dd", null, time(f.dates.opens_at))] : null,
+      f?.dates?.closes_at ? [h("dt", null, "Closes"), h("dd", null, time(f.dates.closes_at))] : null,
+      f?.dates?.resolved_at ? [h("dt", null, "Ended"), h("dd", null, time(f.dates.resolved_at))] : null,
+      f?.dates?.updated_at ? [h("dt", null, "Last activity"), h("dd", null, time(f.dates.updated_at, timeAgo(f.dates.updated_at)), h("span", { class: "muted" }, " (on the platform)"))] : null,
+      extra.length ? [h("dt", null, "Details"), h("dd", null, extra.map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join(" · "))] : null,
+      f?.extra?.results_url ? [h("dt", null, "Results"), h("dd", null, extLink(String(f.extra.results_url)))] : null,
+      p.framing ? [h("dt", null, "Framing"), h("dd", null, p.framing)] : null,
+      h("dt", null, p.fetch_mode === "auto" ? "Last checked" : "Updated"),
+      h("dd", null, f && (p.fetch_mode === "auto" || hasState) ? time(f.fetched_at, timeAgo(f.fetched_at)) : "never", p.fetch_mode === "manual" ? h("span", { class: "muted" }, " · updated by hand") : ""),
+      f?.fetch_error ? [h("dt", null, "Problem"), h("dd", { class: "warn" }, f.fetch_error, p.fetch_mode === "manual" ? " — update the state by hand." : "")] : null,
+      tool && !tool.enabled ? [h("dt", null, "Note"), h("dd", { class: "warn" }, "This tool is disabled; the state is no longer refreshed.")] : null,
+    ),
+    canEditQ(q)
+      ? h(
+          "div",
+          { class: "row" },
+          p.fetch_mode === "auto" ? refreshBtn : h("button", { onclick: () => openForm(manualStateForm(q, tool)) }, "Update state…"),
+          h("button", { onclick: () => openForm(framingForm()) }, "Edit framing"),
+          h("button", { onclick: () => openForm(attachForm(q, true)) }, p.tool_id === CUSTOM_TOOL_ID ? "Edit / replace…" : "Replace…"),
+          h("button", { class: "danger-link", onclick: remove }, "Remove"),
+        )
+      : null,
+  );
 }
 
 function relationsBlock(q, d) {
-  const items = (list) => h("ul", { class: "rel-list" }, list.map((x) => h("li", null, h("a", { href: `#/q/${x.id}` }, x.title), " ", statusPill(x.status))));
+  const editable = canEditQ(q);
+  const unrelate = (x) => async () => {
+    if (await act(() => api("DELETE", `questions/${q.id}/related/${x.id}`), "Relation removed")) await refresh();
+  };
+  const kindSel = h("select", { "aria-label": "Kind of relation" }, h("option", { value: "related" }, "Related to"), h("option", { value: "duplicate" }, "This question is a duplicate of"));
+  const relate = async (x) => {
+    if (await act(() => api("POST", `questions/${q.id}/related`, { id: x.id, kind: kindSel.value }), kindSel.value === "duplicate" ? "Marked as duplicate" : "Related")) await refresh();
+  };
+  const kindText = (x) => (x.kind === "duplicate" ? (x.direction === "to" ? "this is a duplicate of" : "duplicate of this") : null);
   return h(
     "section",
     { class: "panel" },
     h("h2", null, "Related questions"),
-    d.children.length ? items(d.children) : h("p", { class: "muted" }, "None yet."),
-    canEdit() && q.status !== "dropped" ? composer({ parentId: q.id, section: q.section, placeholder: "Add a related question…" }) : null,
-    d.duplicates.length ? [h("h3", null, "Dropped as the same question"), items(d.duplicates)] : null,
+    d.related.length
+      ? h(
+          "ul",
+          { class: "rel-list" },
+          d.related.map((x) =>
+            h(
+              "li",
+              null,
+              kindText(x) ? h("span", { class: "muted small" }, kindText(x), ": ") : null,
+              h("a", { href: `#/q/${x.id}` }, x.title),
+              " ",
+              statusPill(x.status),
+              editable ? [" ", h("button", { class: "link muted small", title: "Remove this relation (both questions stay)", onclick: unrelate(x) }, "unlink")] : null,
+            ),
+          ),
+        )
+      : h("p", { class: "muted" }, "None yet."),
+    editable ? h("div", { class: "row" }, kindSel) : null,
+    editable
+      ? composer({ relateTo: q.id, exclude: new Set(d.related.map((x) => x.id)), onRelate: relate, kind: () => kindSel.value, placeholder: "Type to find a question, or add a new one…" })
+      : null,
   );
 }
 
-// ---------------------------------------------------------------- rules space
+// ---------------------------------------------------------------- rules
 
 async function pageRules(sub, params) {
-  if (sub === "add-tool") return addToolPage(params.get("url"));
-  const st = S.space.settings;
+  if (sub === "add-tool") return toolFormPage({ url: params.get("url") });
+  if (sub === "tool") {
+    const tool = S.tools.find((t) => t.id === params.get("id"));
+    if (!tool) throw new Error("Unknown tool");
+    if (tool.fetch_mode !== "manual" || tool.adapter) throw new Error(`${tool.name} is updated automatically; its links can't be edited.`);
+    return toolFormPage({ tool });
+  }
+  const updates = (t) => (t.fetch_mode === "auto" ? "automatic" : t.auto_unavailable ? "by hand (automatic needs server setup)" : "by hand");
   return h(
     "div",
     { class: "rules" },
     h("h1", null, "Rules"),
-    h("p", null, "How this register works: the charter, the tools that can be linked, and the settings."),
+    h("p", null, "How this register works: the charter, the tools that can be linked and the status labels."),
     h(
       "section",
       { class: "panel" },
       h("h2", null, "Tool list"),
-      h("p", { class: "muted" }, "Only links from these tools can be attached as processes. Anyone with edit access can add a tool; no vote needed."),
+      h("p", { class: "muted" }, "Links from these tools can be attached as processes. Anything else can be linked as a custom process. Anyone with edit access can add a tool; no vote needed."),
       canEdit() ? h("p", null, h("a", { class: "button", href: "#/rules/add-tool" }, "Add a tool")) : null,
       h(
         "div",
@@ -824,10 +821,15 @@ async function pageRules(sub, params) {
                 { class: t.enabled ? "" : "disabled" },
                 h("td", null, t.name),
                 h("td", null, t.url_patterns.map((p) => h("div", null, h("code", null, p.pattern), " → ", itemLabel(p.item_type)))),
-                h("td", null, t.fetch_mode === "auto" ? "automatic" : "by hand"),
+                h("td", null, updates(t)),
                 h("td", null, t.enabled ? "enabled" : "disabled"),
                 canEdit()
-                  ? h("td", null, h("button", { class: "link", onclick: async () => (await act(() => api("POST", `tools/${t.id}/enabled`, { enabled: !t.enabled }), t.enabled ? "Tool disabled" : "Tool enabled")) && refresh() }, t.enabled ? "Disable" : "Enable"))
+                  ? h(
+                      "td",
+                      null,
+                      t.fetch_mode === "manual" && !t.adapter ? [h("a", { class: "link", href: `#/rules/tool${qs({ id: t.id })}` }, "Edit"), " · "] : null,
+                      h("button", { class: "link", onclick: async () => (await act(() => api("POST", `tools/${t.id}/enabled`, { enabled: !t.enabled }), t.enabled ? "Tool disabled" : "Tool enabled")) && refresh() }, t.enabled ? "Disable" : "Enable"),
+                    )
                   : null,
               ),
             ),
@@ -835,21 +837,80 @@ async function pageRules(sub, params) {
         ),
       ),
     ),
+    statusLabelsPanel(),
+    S.counts.removed ? await removedPanel() : null,
+    h("section", { class: "panel charter" }, renderMarkdown(S.space.charter_markdown)),
+    h("section", { class: "panel" }, h("h2", null, "Export"), h("p", null, "Download everything in this space (questions, processes, relations, tools, charter and the full activity log) as JSON."), h("button", { onclick: downloadExport }, "Download export")),
+  );
+}
+
+async function removedPanel() {
+  const { questions } = await api("GET", "questions?removed=only");
+  return h(
+    "section",
+    { class: "panel" },
+    h("h2", null, `Removed questions (${questions.length})`),
+    h("p", { class: "muted" }, "Hidden from lists, kept in the history. Restoring brings a question back as it was."),
     h(
-      "section",
-      { class: "panel" },
-      h("h2", null, "Settings"),
-      h(
-        "dl",
-        { class: "meta" },
-        h("dt", null, "Active limit"), h("dd", null, st.active_cap),
-        h("dt", null, "Objection window"), h("dd", null, `${st.default_rule_days} days`),
-        h("dt", null, "Dormant after"), h("dd", null, `${st.dormancy_days} days without activity`),
-        h("dt", null, "Clear outcomes resolve automatically"), h("dd", null, st.auto_confirm_process_outcomes ? "yes" : "no"),
+      "ul",
+      { class: "rel-list" },
+      questions.map((q) =>
+        h(
+          "li",
+          null,
+          h("a", { href: `#/q/${q.id}` }, q.title),
+          " ",
+          h("span", { class: "muted small" }, "removed ", time(q.removed_at, timeAgo(q.removed_at))),
+          canEdit() ? [" · ", h("button", { class: "link", onclick: async () => (await act(() => api("POST", `questions/${q.id}/restore`), "Restored")) && refresh() }, "Restore")] : null,
+        ),
       ),
     ),
-    h("section", { class: "panel charter" }, renderMarkdown(S.space.charter_markdown)),
-    h("section", { class: "panel" }, h("h2", null, "Export"), h("p", null, "Download everything in this space (questions, processes, resolutions, tools, charter and the full activity log) as JSON."), h("button", { onclick: downloadExport }, "Download export")),
+  );
+}
+
+function statusLabelsPanel() {
+  const labels = S.space.settings.status_labels;
+  const table = h(
+    "table",
+    null,
+    h("thead", null, h("tr", null, h("th", null, "Category"), h("th", null, "Labels"))),
+    h("tbody", null, QUESTION_STATES.map((s) => h("tr", null, h("td", null, statusPill(s), h("div", { class: "muted small" }, STATE_HINT[s])), h("td", null, labels.filter((l) => l.state === s).map((l) => l.label).join(", ") || h("span", { class: "muted" }, "—"))))),
+  );
+  const editForm = () => {
+    const ed = mappingEditor(labels, { labelName: "Label", placeholder: "e.g. Waiting for budget" });
+    const btn = h("button", { type: "submit", class: "primary" }, "Save labels");
+    const form = h(
+      "form",
+      {
+        class: "inline-form",
+        onsubmit: async (e) => {
+          e.preventDefault();
+          let status_labels;
+          try {
+            status_labels = ed.value();
+          } catch (err) {
+            return toast(err.message, "error");
+          }
+          btn.disabled = true;
+          const r = await act(() => api("PUT", "settings/status-labels", { status_labels }), "Labels saved");
+          btn.disabled = false;
+          if (r) await refresh();
+        },
+      },
+      h("p", { class: "muted small" }, "The words your group uses for a status, and the category each one counts as. Offered when setting a status by hand, and for custom processes. Keep at least one “Not started” label: new questions get the first one. Renaming a label doesn't change questions that already use it."),
+      ed.el,
+      h("div", { class: "row" }, btn, h("button", { type: "button", onclick: () => form.replaceWith(editBtn) }, "Cancel")),
+    );
+    return form;
+  };
+  const editBtn = canEdit() ? h("button", { onclick: () => editBtn.replaceWith(editForm()) }, "Edit labels…") : null;
+  return h(
+    "section",
+    { class: "panel" },
+    h("h2", null, "Statuses"),
+    h("p", { class: "muted" }, "Every question and process is in one of these categories. A question follows its process, or its status is set by hand using these labels (also used for custom processes)."),
+    h("div", { class: "table-wrap" }, table),
+    editBtn,
   );
 }
 
@@ -863,14 +924,18 @@ async function downloadExport() {
   setTimeout(() => (URL.revokeObjectURL(a.href), a.remove()), 1000);
 }
 
-function addToolPage(url) {
+/** Add a tool, or edit a manual one when `tool` is given. */
+function toolFormPage({ url, tool }) {
   let host = "";
   try {
     host = url ? new URL(url).hostname : "";
   } catch {}
-  const name = h("input", { type: "text", required: true, maxlength: 60, value: host.replace(/^www\./, "") });
-  const patterns = h("textarea", { rows: 3, required: true, value: host ? `https://${host}/* → item` : "" });
-  const states = h("textarea", { rows: 4, value: "Open → open\nClosed → concluded" });
+  const name = h("input", { type: "text", required: true, maxlength: 60, value: tool ? tool.name : host.replace(/^www\./, "") });
+  const patterns = h("textarea", { rows: 3, required: true, value: tool ? tool.url_patterns.map((p) => `${p.pattern} → ${p.item_type}`).join("\n") : host ? `https://${host}/* → item` : "" });
+  const states = mappingEditor(
+    tool?.state_map ? Object.entries(tool.state_map).map(([label, state]) => ({ label, state })) : [{ label: "Open", state: "open" }, { label: "Closed", state: "concluded" }],
+    { labelName: "The tool's own word", placeholder: "e.g. Closed: passed" },
+  );
   const tester = h("input", { type: "url", value: url ?? "", placeholder: "Paste an example link to check the patterns" });
   const testOut = h("span", { class: "hint" });
   const parsePatterns = () =>
@@ -892,33 +957,85 @@ function addToolPage(url) {
   tester.addEventListener("input", test);
   patterns.addEventListener("input", test);
   queueMicrotask(test);
-  const btn = h("button", { type: "submit", class: "primary" }, "Add tool");
+  const btn = h("button", { type: "submit", class: "primary" }, tool ? "Save tool" : "Add tool");
+  // Adding: a tool updated by hand (patterns + states), or an instance of a platform we can fetch.
+  let kind = !tool && url && /\/(proposals|debates|budgets)\/\d+/.test(url) ? "consul" : "manual";
+  const baseUrl = h("input", { type: "url", placeholder: "https://participa.example.org", value: host ? `https://${host}` : "" });
+  const manualBox = h(
+    "div",
+    null,
+    field("Links accepted", patterns, "One per line: URL pattern → item type. Use :name for one path part and * for anything, e.g. https://forum.example.org/t/* → topic"),
+    field("Check a link", tester),
+    testOut,
+    h(
+      "div",
+      { class: "field" },
+      h("span", { class: "label" }, "States"),
+      h(
+        "span",
+        { class: "hint" },
+        "How this tool names its states, and the category each one counts as. When someone updates a linked item by hand, they pick from these words; the question's status then follows the category. Example for a forum: “Open” → In progress, “Solved” → Accepted, “Closed” → Concluded.",
+      ),
+      states.el,
+    ),
+  );
+  const consulBox = h(
+    "div",
+    null,
+    field("Instance address", baseUrl, "The home page of your city's or organisation's Consul Democracy site. Proposals, debates, budgets and investments from it are then fetched automatically."),
+    h("p", { class: "muted small" }, "Decidim needs no setup: links from any Decidim instance are recognised already."),
+  );
+  const syncKind = () => {
+    manualBox.hidden = kind !== "manual";
+    consulBox.hidden = kind !== "consul";
+    patterns.required = kind === "manual";
+    baseUrl.required = kind === "consul";
+    name.required = kind === "manual";
+    name.placeholder = kind === "consul" ? "Optional, e.g. Decide Madrid" : "";
+    if (kind === "consul" && name.value === host.replace(/^www\./, "")) name.value = "";
+  };
+  syncKind();
+  const kindName = `toolkind-${Math.random().toString(36).slice(2)}`;
+  const kindRadio = (v, label) => h("label", null, h("input", { type: "radio", name: kindName, value: v, checked: kind === v, onchange: () => ((kind = v), syncKind()) }), " ", label);
   return h(
     "div",
     null,
     h("a", { href: "#/rules", class: "back" }, "← Rules"),
-    h("h1", null, "Add a tool"),
-    h("p", null, "New tools are updated by hand: the steward of each question sets the process state. The tool is added to the list right away."),
+    h("h1", null, tool ? `Edit “${tool.name}”` : "Add a tool"),
+    h(
+      "p",
+      null,
+      tool
+        ? "Changes apply right away. Links already attached stay with this tool; their recorded state is kept even if you rename or remove a state label."
+        : "Tools updated by hand work with any website: anyone with edit access sets the state, and the page title prefills questions when possible. Some platforms can be followed automatically.",
+    ),
     h(
       "form",
       {
         class: "panel",
         onsubmit: async (e) => {
           e.preventDefault();
+          if (kind === "consul") {
+            btn.disabled = true;
+            const r = await act(() => api("POST", "tools", { kind: "consul", base_url: baseUrl.value, name: name.value || undefined }), "Tool added");
+            btn.disabled = false;
+            if (r) {
+              await loadSpace();
+              location.hash = "#/rules";
+            }
+            return;
+          }
           const state_map = {};
           let url_patterns;
           try {
             url_patterns = parsePatterns();
-            for (const l of linesToList(states.value)) {
-              const [label, st] = l.split(/\s*(?:→|->)\s*/);
-              if (!st || !(st.trim() in STATE)) throw new Error(`Unknown state in “${l}”`);
-              state_map[label.trim()] = st.trim();
-            }
+            for (const r of states.value()) state_map[r.label] = r.state;
           } catch (err) {
             return toast(err.message, "error");
           }
           btn.disabled = true;
-          const r = await act(() => api("POST", "tools", { name: name.value, url_patterns, state_map }), "Tool added");
+          const body = { name: name.value, url_patterns, state_map };
+          const r = await act(() => (tool ? api("PATCH", `tools/${tool.id}`, body) : api("POST", "tools", body)), tool ? "Tool saved" : "Tool added");
           btn.disabled = false;
           if (r) {
             await loadSpace();
@@ -926,11 +1043,10 @@ function addToolPage(url) {
           }
         },
       },
+      tool ? null : h("div", { class: "radios" }, kindRadio("manual", "Any website, updated by hand"), kindRadio("consul", "A Consul Democracy instance (followed automatically)")),
       field("Tool name", name),
-      field("Links accepted", patterns, "One per line: URL pattern → item type. Use :name for one path part and * for anything, e.g. https://forum.example.org/t/* → topic"),
-      field("Check a link", tester),
-      testOut,
-      field("States", states, "One per line: label → open, not_started, accepted, rejected, concluded or withdrawn."),
+      manualBox,
+      consulBox,
       h("div", { class: "row" }, btn),
     ),
   );

@@ -17,7 +17,7 @@ export function createSpace(ctx: Ctx, nameIn: string) {
     id: newId(),
     name,
     created_at: ctx.now().toISOString(),
-    settings: { ...DEFAULT_SETTINGS },
+    settings: structuredClone(DEFAULT_SETTINGS),
     charter_markdown: DEFAULT_CHARTER,
   };
   const editToken = generateToken();

@@ -9,7 +9,7 @@ import { exportSpace } from "./export.ts";
 const USAGE = `Question register — operator commands
 
   create-space "<name>"            Create a space; prints its edit and view links (shown once)
-  create-demo                      Create a demo space with seed questions covering every status
+  create-demo                      Create a demo space with example questions
   list-spaces                      List spaces (ids and names; never links)
   rotate-link <space-id> edit|view Invalidate a link and print its replacement
   export <space-id>                Print the space's JSON export

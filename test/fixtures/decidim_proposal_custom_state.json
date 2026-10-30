@@ -1,0 +1,58 @@
+{
+ "data": {
+  "component": {
+   "proposal": {
+    "id": "12040",
+    "title": {
+     "translations": [
+      {
+       "locale": "ca",
+       "text": "Reconeixement automàtic de links"
+      }
+     ]
+    },
+    "state": "finished",
+    "proposalState": {
+     "title": {
+      "translations": [
+       {
+        "locale": "ca",
+        "text": null
+       },
+       {
+        "locale": "en",
+        "text": "Main repo (merged)"
+       },
+       {
+        "locale": "es",
+        "text": null
+       }
+      ]
+     }
+    },
+    "publishedAt": "2017-10-06T10:48:14+02:00",
+    "answeredAt": "2018-09-14T19:05:01+02:00",
+    "updatedAt": "2025-03-27T13:39:06+01:00",
+    "voteCount": 9,
+    "totalCommentsCount": 0,
+    "withdrawnAt": null,
+    "answer": {
+     "translations": [
+      {
+       "locale": "ca",
+       "text": "<p>Aquesta proposta ha estat acceptada i ja es troba en desenvolupament.</p>"
+      },
+      {
+       "locale": "en",
+       "text": "<ul><li>It is pending funding.</li><li>Has been reviewed by Decidim Team (Product) and complies with the <a href=\"https://docs.decidim.org/social-contract/en/social-contract\" target=\"_blank\">Social Contract</a>.</li></ul>"
+      },
+      {
+       "locale": "es",
+       "text": "<p>Esta propuesta ha sido aceptada y ya se encuentra en desarrollo,</p>"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

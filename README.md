@@ -1,6 +1,6 @@
 # Question register
 
-A small web app where a group collects questions that need a collective answer. Each question is attached to the external process that will answer it (a GitHub PR, a Metaculus question, a Polis conversation…), and the register records when and how it was resolved.
+A small web app where a group collects questions that need a collective answer. Each question can be attached to the process where it's worked on (a GitHub PR, a Loomio poll, a Polis conversation, a meeting…), and its status follows that process or is set by hand.
 
 This is **v0**, built for a month-long pilot with one real group.
 
@@ -10,41 +10,41 @@ Requires Node.js ≥ 24. There's no build step and no runtime dependencies.
 
 ```sh
 npm install                      # dev tools only: typescript, linkedom (tests)
-npm test                         # 57 tests: state machine, engine, adapters (fixtures), HTTP, UI smoke
-node src/cli.ts create-demo      # demo space covering every status and criterion kind
+npm test                         # questions & statuses, adapters (recorded fixtures), title pre-fill, HTTP, UI smoke
+node src/cli.ts create-demo      # demo space with example questions and processes
 npm start                        # → http://localhost:3000; open the edit link printed above
 ```
 
 Create a real space with `node src/cli.ts create-space "Our group"`. It prints an **edit link** and a **view link**, once.
 
-## What's in v0
+## What's in it
 
-- Questions with statuses (pool → active/standing → resolved; dormant; dropped), an active cap, stewards, "related" links and duplicates. All transitions are enforced on the server.
-- One process per question, accepted only from tools on the space's **tool list**. GitHub and GitLab are fetched automatically; Metaculus, Loomio, Polis and Kialo are updated by hand.
-- **Resolution criteria** (any-of): process outcome, date, default rule (objection window), steward attestation. Auto-confirmation for clear outcomes, a snapshot at resolution, and reopening.
-- A **Rules** page with the charter, the tool list and settings. Anyone with edit access can add or enable/disable a tool by filling in a form (no voting). Charter and settings are changed by the operator for now.
+- Questions with a **status category** (not started, in progress, accepted, rejected, concluded, withdrawn). A question follows its process, or its status is set by hand from the space's editable status labels. Relations between questions (related, duplicate), shown on both sides.
+- One process per question: a link from the space's **tool list**, or a **custom** process (a meeting, an unconference…) with or without a link. GitHub, GitLab, public Loomio polls/threads, Polis, Decidim (any instance) and Consul Democracy (per instance) are fetched automatically (state, results, last activity); Metaculus too with an API token. Other tools are updated by hand, with the page title used to prefill questions. See `docs/TOOLS.md`.
+- A **Rules** page with the charter, the tool list and the status labels, all editable by anyone with edit access except the charter.
 - An append-only **activity log** (enforced by database triggers), "changed since your last visit", an Atom feed and a full JSON export.
 - Access by secret link plus a display name; no accounts.
+
+The v0 decision model (adopt, resolution criteria, objection windows, stewards, active cap, dormancy, Rules proposals) was removed to keep things simple; see `DECISIONS.md`.
 
 ## Layout
 
 ```
 src/            server (TypeScript, run directly by Node)
-  types.ts      domain types (spec §2)
-  questions.ts  status machine (spec §3)
-  engine.ts     resolution engine (spec §4)
-  criteria.ts   criteria validation + evaluation
-  processes.ts  attach / refresh / manual updates
+  types.ts      domain types
+  questions.ts  questions: create, edit, status, relations
+  processes.ts  attach / refresh / hand-set states; questions follow their process
   tools.ts      tool registry + URL matching
-  adapters/     GitHub, GitLab
-  rules.ts      Rules-space templates
+  adapters/     GitHub, GitLab, Loomio, Polis, Metaculus, Decidim, Consul
+  pagetitle.ts  title pre-fill for other tools (with SSRF guard)
+  rules.ts      tool list and status labels
   http/         router + JSON API
   cli.ts        operator commands
 public/         UI (vanilla JS modules, no build)
 seed/charter.md default charter
 test/           node:test suites + recorded API fixtures
-docs/           API, export format, deployment, user guide
-DECISIONS.md    choices made where the spec said "(decide)"
+docs/           API, tools & statuses, export format, deployment, user guide
+DECISIONS.md    implementation decisions
 ```
 
 ## Documentation
@@ -54,7 +54,8 @@ DECISIONS.md    choices made where the spec said "(decide)"
 | `docs/USER-GUIDE.md` | One-page guide for the pilot group |
 | `docs/DEPLOY.md` | Configuration, Docker/VPS, backups, security notes |
 | `docs/API.md` | JSON API |
-| `docs/EXPORT.md` | Export format `question-register/v1` |
+| `docs/TOOLS.md` | What each platform exposes (states, last activity) and how states map to categories |
+| `docs/EXPORT.md` | Export format `question-register/v3` |
 | `DECISIONS.md` | Implementation decisions and M0 API findings |
 
 ## Design documents (hand-off pack)

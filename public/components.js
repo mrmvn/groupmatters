@@ -1,186 +1,97 @@
-// Reusable UI pieces: status pills, process chips, question cards, the criteria editor, activity lines.
-import { h, time, timeAgo, toLocalInput, fromLocalInput, fmtDate } from "./dom.js";
-import { STATUS, STATE, TERMINAL, itemLabel, criteriaSummary, ACTION, TRIGGER } from "./labels.js";
+// Reusable UI pieces: status pills, process chips, question cards, activity lines.
+import { h, time, timeAgo } from "./dom.js";
+import { STATE, STATE_ICON, STATE_HINT, QUESTION_STATES, itemLabel, ACTION, OLD_STATUS, CUSTOM_TOOL_ID } from "./labels.js";
 
-export const statusPill = (status) =>
-  h("span", { class: `pill st-${status}`, title: STATUS[status]?.hint }, h("span", { "aria-hidden": "true" }, STATUS[status]?.icon, " "), STATUS[status]?.label ?? status);
+/** A question's status: category colour and icon, with the hand-set label when there is one. */
+export const statusPill = (state, label) =>
+  h("span", { class: `pill st-${state}`, title: label && label !== STATE[state] ? `${STATE[state]}: ${STATE_HINT[state]}` : STATE_HINT[state] }, h("span", { "aria-hidden": "true" }, STATE_ICON[state] ?? "", " "), label ?? STATE[state] ?? state);
 
-export const statePill = (state) => h("span", { class: `pill ps-${state}` }, STATE[state] ?? state);
+export const questionPill = (q) => statusPill(q.status, q.status_source === "manual" ? q.status_label : undefined);
+
+/** A process state: the platform's own wording when known, coloured by category. */
+export const statePill = (state, raw) => h("span", { class: `pill ps-${state}`, title: raw && STATE[state] ? STATE[state] : undefined }, raw ?? STATE[state] ?? state);
 
 export function toolName(tools, id) {
+  if (id === CUSTOM_TOOL_ID) return "Custom";
   return tools.find((t) => t.id === id)?.name ?? id;
 }
+
+/** "Loomio · poll" or, for custom processes, just their kind ("General assembly"). */
+export const processKind = (p, tools) => (p.tool_id === CUSTOM_TOOL_ID ? p.item_type : `${toolName(tools, p.tool_id)} · ${itemLabel(p.item_type)}`);
 
 /** Compact chip: tool · item type · state · key extra value */
 export function processChip(process, tools) {
   if (!process) return null;
   const f = process.fetched;
   const extra = f?.extra ?? {};
-  const key = ["probability", "community_prediction", "votes", "comments"].find((k) => extra[k] !== undefined);
+  const key = ["participants", "votes", "forecasters", "comments"].find((k) => extra[k] !== undefined);
+  const hasState = f && f.state !== "unknown";
   return h(
     "span",
     { class: "chip" },
-    h("span", { class: "chip-tool" }, toolName(tools, process.tool_id)),
+    h("span", { class: "chip-tool" }, processKind(process, tools)),
+    process.url ? h("a", { href: process.url, target: "_blank", rel: "noopener noreferrer", class: "chip-ext", title: `Open on ${process.tool_id === CUSTOM_TOOL_ID ? new URL(process.url).hostname : toolName(tools, process.tool_id)}`, "aria-label": "Open the process (new tab)" }, "↗") : null,
     " · ",
-    itemLabel(process.item_type),
-    " · ",
-    f ? statePill(f.state) : h("span", { class: "muted" }, "state not set"),
+    hasState ? statePill(f.state, f.raw_state) : h("span", { class: "muted" }, "state not set"),
     key ? h("span", { class: "muted" }, ` · ${extra[key]} ${key.replace(/_/g, " ")}`) : null,
     f?.fetch_error ? h("span", { class: "warn", title: f.fetch_error }, " ⚠") : null,
   );
 }
 
 export function questionCard(q, ctx) {
-  const { tools, since, space } = ctx;
+  const { tools, since } = ctx;
   const changed = since && q.last_activity_at > since;
-  const badges = [];
-  if (q.pending_resolution) badges.push(h("span", { class: "badge ready" }, "⏵ Ready to resolve"));
-  if (q.open_objections) badges.push(h("span", { class: "badge objection" }, `✋ ${q.open_objections} objection${q.open_objections > 1 ? "s" : ""}`));
-  if (changed) badges.push(h("span", { class: "badge changed" }, "★ Changed since your last visit"));
-  if (q.section === "rules") badges.push(h("span", { class: "badge rules" }, "Rules"));
+  const platformAt = q.process?.fetched?.dates?.updated_at;
   return h(
     "li",
     { class: `card${changed ? " is-changed" : ""}` },
-    h(
-      "div",
-      { class: "card-head" },
-      h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title),
-      statusPill(q.status),
-    ),
+    h("div", { class: "card-head" }, h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title), questionPill(q)),
     h(
       "div",
       { class: "card-meta" },
-      q.steward ? h("span", null, "Steward: ", h("strong", null, q.steward)) : h("span", { class: "muted" }, "No steward"),
       processChip(q.process, tools),
+      q.process?.fetched?.outcome_summary ? h("span", { class: "muted" }, q.process.fetched.outcome_summary) : null,
     ),
-    q.status === "resolved" && q.resolution_record
-      ? h("div", { class: "card-criteria" }, `Resolved ${fmtDate(q.resolution_record.resolved_at, false)}`, q.resolution_record.outcome ? ` · ${STATE[q.resolution_record.outcome]}` : "")
-      : q.status === "dropped"
-        ? h("div", { class: "card-criteria" }, q.duplicate_of_id ? "Same as another question" : `Dropped: ${q.drop_reason ?? ""}`)
-        : h("div", { class: "card-criteria" }, criteriaSummary(q.resolution, q.process, space.settings.default_rule_days)),
-    badges.length ? h("div", { class: "badges" }, badges) : null,
-  );
-}
-
-const KIND_LABEL = {
-  process_outcome: "When the linked process reaches an outcome",
-  date: "On a date (deadline)",
-  default_rule: "Default rule: if nobody objects within an objection window",
-  attested: "When the steward confirms a stated condition",
-};
-
-/**
- * Criteria editor. Returns { el, value() } where value() returns a Resolution or throws Error.
- * opts: { resolution, hasProcess, section, defaultDays, allowModes: ["tbd","open","criteria"] }
- */
-export function criteriaEditor(opts) {
-  const r = opts.resolution ?? { mode: "tbd", criteria: [] };
-  const modes = opts.allowModes ?? ["tbd", "open", "criteria"];
-  const name = `mode-${Math.random().toString(36).slice(2)}`;
-  const find = (k) => r.criteria.find((c) => c.kind === k);
-  let mode = modes.includes(r.mode) ? r.mode : modes.includes("criteria") ? "criteria" : modes[0];
-
-  const modeLabels = { tbd: "Not decided yet", open: "Open-ended (no answer expected; becomes Standing)", criteria: "Answered when…" };
-  const modeRadios = h(
-    "div",
-    { class: "radios" },
-    modes.map((m) =>
-      h(
-        "label",
-        null,
-        h("input", { type: "radio", name, value: m, checked: m === mode, onchange: () => ((mode = m), sync()) }),
-        " ",
-        modeLabels[m],
-      ),
+    h(
+      "div",
+      { class: "card-criteria" },
+      q.process ? (q.status_source === "process" ? "Status follows the process" : "Status set by hand") : "No process",
+      " · ",
+      platformAt ? ["last activity on the platform ", time(platformAt, timeAgo(platformAt))] : ["last change ", time(q.last_activity_at, timeAgo(q.last_activity_at))],
     ),
+    changed ? h("div", { class: "badges" }, h("span", { class: "badge changed" }, "★ Changed since your last visit")) : null,
   );
-
-  const rows = {};
-  const checks = {};
-  const forcedDefault = opts.section === "rules";
-
-  // process_outcome
-  const po = find("process_outcome");
-  const acceptBoxes = TERMINAL.map((s) => h("label", { class: "inline" }, h("input", { type: "checkbox", value: s, checked: !!po?.accept_states?.includes(s) }), ` ${STATE[s]}`));
-  checks.process_outcome = h("input", { type: "checkbox", checked: !!po, disabled: !opts.hasProcess && !po });
-  rows.process_outcome = h(
-    "div",
-    { class: "crit" },
-    h("label", null, checks.process_outcome, " ", KIND_LABEL.process_outcome, !opts.hasProcess ? h("span", { class: "muted" }, " (link a process first)") : null),
-    h("details", { class: "sub" }, h("summary", null, "Only for some outcomes…"), h("div", null, "Count it only if the process ends as: ", acceptBoxes), h("p", { class: "muted small" }, "Leave all unticked to accept any final state.")),
-  );
-
-  // date
-  const dt = find("date");
-  checks.date = h("input", { type: "checkbox", checked: !!dt });
-  const dateInput = h("input", { type: "datetime-local", value: dt ? toLocalInput(dt.at) : "", onchange: () => (checks.date.checked = true) });
-  rows.date = h("div", { class: "crit" }, h("label", null, checks.date, " ", KIND_LABEL.date), h("div", { class: "sub" }, dateInput));
-
-  // default_rule
-  const dr = find("default_rule");
-  checks.default_rule = h("input", { type: "checkbox", checked: !!dr || forcedDefault, disabled: forcedDefault });
-  const daysInput = h("input", { type: "number", min: 1, max: 365, value: dr?.days ?? "", placeholder: String(opts.defaultDays ?? 7), class: "num" });
-  rows.default_rule = h(
-    "div",
-    { class: "crit" },
-    h("label", null, checks.default_rule, " ", KIND_LABEL.default_rule, forcedDefault ? h("span", { class: "muted" }, " (required in the Rules space)") : null),
-    h("div", { class: "sub" }, "Window: ", daysInput, " days"),
-  );
-
-  // attested
-  const at = find("attested");
-  checks.attested = h("input", { type: "checkbox", checked: !!at });
-  const attInput = h("input", { type: "text", value: at?.description ?? "", placeholder: "e.g. a majority agrees at the next general meeting", class: "wide", oninput: () => (checks.attested.checked = true) });
-  rows.attested = h("div", { class: "crit" }, h("label", null, checks.attested, " ", KIND_LABEL.attested), h("div", { class: "sub" }, attInput));
-
-  const critBox = h("fieldset", { class: "criteria-box" }, h("legend", null, "Any of these (the first one met counts)"), rows.process_outcome, rows.date, rows.default_rule, rows.attested);
-
-  const sync = () => {
-    critBox.hidden = mode !== "criteria";
-  };
-  sync();
-
-  const el = h("div", { class: "criteria-editor" }, modes.length > 1 ? modeRadios : null, critBox);
-  return {
-    el,
-    value() {
-      if (mode !== "criteria") return { mode, criteria: [] };
-      const criteria = [];
-      if (checks.process_outcome.checked) {
-        const states = acceptBoxes.map((l) => l.querySelector("input")).filter((i) => i.checked).map((i) => i.value);
-        criteria.push(states.length ? { kind: "process_outcome", accept_states: states } : { kind: "process_outcome" });
-      }
-      if (checks.date.checked) {
-        if (!dateInput.value) throw new Error("Pick a date, or untick the date option");
-        criteria.push({ kind: "date", at: fromLocalInput(dateInput.value) });
-      }
-      if (checks.default_rule.checked) criteria.push(daysInput.value ? { kind: "default_rule", days: Number(daysInput.value) } : { kind: "default_rule" });
-      if (checks.attested.checked) {
-        if (!attInput.value.trim()) throw new Error("Describe what the steward will confirm");
-        criteria.push({ kind: "attested", description: attInput.value.trim() });
-      }
-      if (!criteria.length) throw new Error("Tick at least one way the question gets answered");
-      return { mode, criteria };
-    },
-  };
 }
 
 /** One line in an activity list. */
 export function activityItem(e, titles) {
   const d = e.data ?? {};
   let detail = null;
+  const st = (s) => STATE[s] ?? OLD_STATUS[s] ?? s;
   switch (e.action) {
     case "question.status_changed":
-      detail = [STATUS[d.from]?.label ?? d.from, " → ", STATUS[d.to]?.label ?? d.to, d.reason ? ` (${d.reason})` : ""];
+      detail = [
+        st(d.from),
+        " → ",
+        d.label ?? st(d.to),
+        d.source === "process" ? " (follows the process)" : d.source === "manual" ? " (set by hand)" : "",
+        d.reason ? ` (${d.reason})` : "",
+        d.note ? ` — “${d.note}”` : "",
+      ];
       break;
     case "steward.changed":
       detail = `${d.before ?? "nobody"} → ${d.after ?? "nobody"} (${d.how})`;
       break;
     case "process.state_changed":
-      detail = `${d.before ? STATE[d.before.state] : "—"} → ${STATE[d.after?.state] ?? "?"}${d.after?.outcome_summary ? ` (${d.after.outcome_summary})` : ""}`;
+      detail = `${d.before ? (d.before.raw_state ?? STATE[d.before.state]) : "—"} → ${d.after?.raw_state ?? STATE[d.after?.state] ?? "?"}${d.after?.outcome_summary ? ` (${d.after.outcome_summary})` : ""}`;
       break;
     case "process.attached":
-      detail = d.url;
+      detail = d.url ?? d.item_type;
+      break;
+    case "process.now_manual":
+    case "model.simplified":
+    case "question.removed":
+      detail = d.reason ?? d.note;
       break;
     case "objection.raised":
       detail = `“${d.reason}”`;
@@ -188,11 +99,8 @@ export function activityItem(e, titles) {
     case "objection.addressed":
       detail = `“${d.note}”`;
       break;
-    case "resolution.pending":
-      detail = TRIGGER[d.triggered_by];
-      break;
     case "resolution.confirmed":
-      detail = [TRIGGER[d.record?.triggered_by], d.record?.outcome ? ` · ${STATE[d.record.outcome]}` : ""];
+      detail = [d.record?.outcome ? STATE[d.record.outcome] : "", d.record?.synthesis ? ` — “${d.record.synthesis}”` : ""];
       break;
     case "question.reopened":
     case "resolution.cancelled":
@@ -204,8 +112,12 @@ export function activityItem(e, titles) {
     case "tool.added":
       detail = d.tool?.name;
       break;
-    case "objection_window.resumed":
-      detail = `ends ${fmtDate(d.ends_at)}`;
+    case "tool.edited":
+      detail = d.after?.name;
+      break;
+    case "relation.added":
+    case "relation.removed":
+      detail = [d.kind === "duplicate" ? "duplicate: " : "", d.other_title ? `“${d.other_title}”` : ""];
       break;
   }
   const qTitle = titles && e.question_id ? titles.get(e.question_id) : null;
@@ -220,4 +132,47 @@ export function activityItem(e, titles) {
     " ",
     h("span", { class: "muted small" }, time(e.at, timeAgo(e.at))),
   );
+}
+
+/**
+ * Rows of "label → category": a text input, a category select and a remove button, plus "Add".
+ * Used for a tool's states and the space's status labels. Returns { el, value() } where value()
+ * returns [{label, state}] or throws an Error with a readable message.
+ */
+export function mappingEditor(rows, opts = {}) {
+  const list = h("div", { class: "map-rows" });
+  const addRow = (label = "", state = "open") => {
+    const input = h("input", { type: "text", maxlength: 80, value: label, placeholder: opts.placeholder ?? "Label", "aria-label": opts.labelName ?? "Label" });
+    const select = h(
+      "select",
+      { "aria-label": "Category" },
+      QUESTION_STATES.map((s) => h("option", { value: s, selected: s === state }, `${STATE_ICON[s]} ${STATE[s]}`)),
+    );
+    const row = h("div", { class: "map-row" }, input, h("span", { "aria-hidden": "true" }, "→"), select, h("button", { type: "button", class: "link", title: "Remove this row", onclick: () => row.remove() }, "✕"));
+    list.append(row);
+    return input;
+  };
+  for (const r of rows) addRow(r.label, r.state);
+  const el = h(
+    "div",
+    { class: "map-editor" },
+    h("div", { class: "map-head muted small" }, h("span", null, opts.labelName ?? "Label"), h("span", null, "counts as")),
+    list,
+    h("button", { type: "button", class: "link", onclick: () => addRow("", "open").focus() }, "＋ Add a row"),
+  );
+  return {
+    el,
+    value() {
+      const out = [...list.querySelectorAll(".map-row")]
+        .map((row) => ({ label: row.querySelector("input").value.trim(), state: row.querySelector("select").value }))
+        .filter((r) => r.label);
+      if (!out.length) throw new Error("Add at least one row");
+      const seen = new Set();
+      for (const r of out) {
+        if (seen.has(r.label.toLowerCase())) throw new Error(`“${r.label}” appears twice`);
+        seen.add(r.label.toLowerCase());
+      }
+      return out;
+    },
+  };
 }

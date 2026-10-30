@@ -1,10 +1,8 @@
-// In-process scheduler (single instance in v0): refresh due processes, evaluate criteria, dormancy sweep.
+// In-process scheduler (single instance): refresh due processes. Questions that follow their
+// process are updated as part of each refresh.
 import type { Ctx } from "./ctx.ts";
 import * as repo from "./repo.ts";
 import { refreshProcess } from "./processes.ts";
-import { dormancySweep, evaluateAll } from "./engine.ts";
-
-const DORMANCY_EVERY_MS = 60 * 60_000; // checked hourly; questions go dormant after N days
 
 export async function tick(ctx: Ctx) {
   const due = repo.dueProcesses(ctx.db, ctx.now().toISOString());
@@ -14,9 +12,8 @@ export async function tick(ctx: Ctx) {
     } catch (e) {
       console.error(`refresh ${p.question_id}:`, (e as Error).message);
     }
-    await new Promise((r) => setTimeout(r, 250)); // be gentle with external APIs
+    if (due.length > 1) await new Promise((r) => setTimeout(r, 250)); // be gentle with external APIs
   }
-  await evaluateAll(ctx);
 }
 
 export function startScheduler(ctx: Ctx) {
@@ -32,17 +29,7 @@ export function startScheduler(ctx: Ctx) {
       running = false;
     }
   };
-  const dorm = () => {
-    try {
-      const n = dormancySweep(ctx);
-      if (n) console.log(`dormancy: ${n} question(s) moved to dormant`);
-    } catch (e) {
-      console.error("dormancy sweep failed:", e);
-    }
-  };
   setTimeout(run, 2_000);
-  setTimeout(dorm, 5_000);
-  const t1 = setInterval(run, ctx.config.tickMs);
-  const t2 = setInterval(dorm, DORMANCY_EVERY_MS);
-  return () => (clearInterval(t1), clearInterval(t2));
+  const t = setInterval(run, ctx.config.tickMs);
+  return () => clearInterval(t);
 }

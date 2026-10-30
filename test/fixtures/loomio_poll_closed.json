@@ -1,0 +1,78 @@
+{
+ "polls": [
+  {
+   "id": 393058,
+   "key": "irvWwUHt",
+   "title": "Do you support adopting this list of expectations and processes for Working Group operation? ",
+   "poll_type": "proposal",
+   "closing_at": "2026-09-24T14:00:00.000Z",
+   "closed_at": "2026-09-24T14:00:17.677Z",
+   "opened_at": "2026-09-16T15:02:58.234Z",
+   "opening_at": null,
+   "created_at": "2026-09-16T15:02:58.283Z",
+   "discarded_at": null,
+   "current_outcome_id": null,
+   "hide_results": "off",
+   "vote_count_cast": 26,
+   "vote_count_eligible": 489,
+   "topic_id": 667338,
+   "anonymous": false,
+   "results": [
+    {
+     "id": 1422834,
+     "name": "Looks good",
+     "name_format": "plain",
+     "icon": "agree",
+     "rank": 1,
+     "score": 19,
+     "vote_count": 19,
+     "test_result": null
+    },
+    {
+     "id": 1422835,
+     "name": "Could be better",
+     "name_format": "plain",
+     "icon": "abstain",
+     "rank": 2,
+     "score": 6,
+     "vote_count": 6,
+     "test_result": null
+    },
+    {
+     "id": 1422836,
+     "name": "Needs a rethink",
+     "name_format": "plain",
+     "icon": "disagree",
+     "rank": 3,
+     "score": 1,
+     "vote_count": 1,
+     "test_result": null
+    },
+    {
+     "id": -1,
+     "name": "poll_receipts_page.not_voted",
+     "name_format": "i18n",
+     "icon": null,
+     "rank": null,
+     "score": 0,
+     "vote_count": 463,
+     "test_result": null
+    }
+   ]
+  }
+ ],
+ "outcomes": [],
+ "topics": [
+  {
+   "id": 667338,
+   "last_activity_at": "2026-09-24T13:59:24.811Z",
+   "locked_at": null,
+   "discarded_at": null,
+   "topicable_type": "Discussion",
+   "topicable_id": 637805,
+   "discussion_id": 637805,
+   "replies_count": 27,
+   "active_polls_count": 0
+  }
+ ]
+}

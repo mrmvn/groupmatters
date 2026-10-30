@@ -1,15 +1,15 @@
-// JSON API (spec §11). All UI actions go through here, authenticated by the space token in the path.
+// JSON API. All UI actions go through here, authenticated by the space token in the path.
 import type { Ctx } from "../ctx.ts";
 import type { Role, Space } from "../types.ts";
+import { CUSTOM_TOOL_ID } from "../types.ts";
 import * as repo from "../repo.ts";
 import * as Q from "../questions.ts";
-import * as E from "../engine.ts";
 import * as P from "../processes.ts";
 import { list, similar } from "../search.ts";
-import { addToolDirect, setToolEnabledDirect } from "../rules.ts";
+import { addToolDirect, editToolDirect, setStatusLabels, setToolEnabledDirect } from "../rules.ts";
 import { exportSpace } from "../export.ts";
-import { adapterIds } from "../adapters/index.ts";
-import { bad, forbidden, HttpError, notFound } from "../util.ts";
+import { adapterIds, getAdapter } from "../adapters/index.ts";
+import { forbidden, HttpError, notFound, bad } from "../util.ts";
 
 export type ApiReq = {
   method: string;
@@ -24,30 +24,38 @@ export type ApiReq = {
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function counts(ctx: Ctx, space: Space) {
-  const rows = ctx.db
-    .prepare("SELECT section, status, COUNT(*) AS n FROM questions WHERE space_id = ? GROUP BY section, status")
-    .all(space.id) as { section: string; status: string; n: number }[];
-  const out: Record<string, Record<string, number>> = { main: {}, rules: {} };
-  for (const r of rows) out[r.section][r.status] = r.n;
+  const rows = ctx.db.prepare("SELECT status, COUNT(*) AS n FROM questions WHERE space_id = ? AND removed_at IS NULL GROUP BY status").all(space.id) as { status: string; n: number }[];
+  const out: Record<string, number> = Object.fromEntries(rows.map((r) => [r.status, r.n]));
+  out.removed = (ctx.db.prepare("SELECT COUNT(*) AS n FROM questions WHERE space_id = ? AND removed_at IS NOT NULL").get(space.id) as { n: number }).n;
   return out;
+}
+
+/** Tools as the UI needs them: `fetch_mode` is the effective mode on this server. */
+function toolsView(ctx: Ctx, space: Space) {
+  return repo.listTools(ctx.db, space.id).map((t) => {
+    const a = t.adapter ? getAdapter(t.adapter) : undefined;
+    const usable = t.fetch_mode === "auto" && !!a && (!a.available || a.available(ctx));
+    return t.fetch_mode === "auto" && !usable ? { ...t, fetch_mode: "manual" as const, auto_unavailable: true } : t;
+  });
 }
 
 function questionDetail(ctx: Ctx, space: Space, id: string) {
   const q = Q.load(ctx, space, id);
   const all = repo.listQuestions(ctx.db, space.id);
-  const brief = (x: { id: string; title: string; status: string; section: string }) => ({ id: x.id, title: x.title, status: x.status, section: x.section });
-  const parent = q.parent_id ? all.find((x) => x.id === q.parent_id) : undefined;
-  const dup = q.duplicate_of_id ? all.find((x) => x.id === q.duplicate_of_id) : undefined;
+  const byId = new Map(all.map((x) => [x.id, x]));
+  // Every relation is shown on both questions; `direction` says which side this question is on.
+  const related = repo.relationsOf(ctx.db, q.id).flatMap((r) => {
+    const outgoing = r.from_id === q.id;
+    const other = byId.get(outgoing ? r.to_id : r.from_id);
+    return other
+      ? [{ id: other.id, title: other.title, status: other.status, kind: r.kind, direction: outgoing ? "to" : "from", created_at: r.created_at, created_by: r.created_by }]
+      : [];
+  });
   return {
     question: q,
-    objections: repo.listObjections(ctx.db, q.id),
-    parent: parent && brief(parent),
-    duplicate_of: dup && brief(dup),
-    children: all.filter((x) => x.parent_id === q.id).map(brief),
-    duplicates: all.filter((x) => x.duplicate_of_id === q.id).map(brief),
+    related,
     activity: repo.listActivity(ctx.db, space.id, { questionId: q.id, limit: 200 }),
-    steward_inactive: E.stewardInactive(ctx, space, q),
-    tool: q.process ? repo.getTool(ctx.db, space.id, q.process.tool_id) : undefined,
+    tool: q.process && q.process.tool_id !== CUSTOM_TOOL_ID ? repo.getTool(ctx.db, space.id, q.process.tool_id) : undefined,
   };
 }
 
@@ -65,10 +73,9 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     return {
       space: repo.getSpace(ctx.db, space.id),
       role: r.role,
-      tools: repo.listTools(ctx.db, space.id),
+      tools: toolsView(ctx, space),
       adapters: adapterIds(),
       counts: counts(ctx, space),
-      active_count: repo.countActive(ctx.db, space.id),
       now: ctx.now().toISOString(),
     };
   }
@@ -84,18 +91,17 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     if (typeof r.body?.url !== "string") throw bad("url is required");
     return P.previewUrl(ctx, space, r.body.url);
   }
+  if (method === "PUT" && a === "settings" && id === "status-labels" && !b) {
+    return { space: setStatusLabels(ctx, space, actor, r.body?.status_labels) };
+  }
 
-  // ---- tools: added and toggled directly, no proposal or voting ----
+  // ---- tools: added, edited and toggled directly ----
   if (a === "tools") {
-    if (method === "POST" && !id) {
-      addToolDirect(ctx, space, actor, r.body);
-      return { tools: repo.listTools(ctx.db, space.id) };
-    }
-    if (method === "POST" && id && b === "enabled") {
-      setToolEnabledDirect(ctx, space, actor, id, r.body?.enabled);
-      return { tools: repo.listTools(ctx.db, space.id) };
-    }
-    throw notFound();
+    if (method === "POST" && !id) addToolDirect(ctx, space, actor, r.body);
+    else if (method === "PATCH" && id && !b) editToolDirect(ctx, space, actor, id, r.body);
+    else if (method === "POST" && id && b === "enabled") setToolEnabledDirect(ctx, space, actor, id, r.body?.enabled);
+    else throw notFound();
+    return { tools: toolsView(ctx, space) };
   }
 
   // ---- questions ----
@@ -109,19 +115,27 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     throw notFound();
   }
 
+  const q = Q.load(ctx, space, id);
+  // A removed question is read-only until restored.
+  if (isWrite && q.removed_at && b !== "restore") throw new HttpError(409, "removed", "This question was removed. Restore it first.");
+
   if (!b) {
     if (method === "GET") return questionDetail(ctx, space, id);
     if (method === "PATCH") {
-      Q.edit(ctx, space, Q.load(ctx, space, id), actor, r.body);
+      Q.edit(ctx, space, q, actor, r.body);
       return questionDetail(ctx, space, id);
     }
     throw notFound();
   }
 
-  const q = Q.load(ctx, space, id);
+  if (!c && method === "POST" && (b === "remove" || b === "restore")) {
+    if (b === "remove") Q.remove(ctx, space, q, actor, r.body);
+    else Q.restore(ctx, space, q, actor);
+    return questionDetail(ctx, space, id);
+  }
 
-  if (b === "resolution" && method === "PUT") {
-    await Q.setResolution(ctx, space, q, actor, r.body);
+  if (b === "status" && !c && method === "PUT") {
+    Q.setStatus(ctx, space, q, actor, r.body);
     return questionDetail(ctx, space, id);
   }
 
@@ -131,60 +145,18 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     else if (!c && method === "DELETE") P.removeProcess(ctx, space, q, actor);
     else if (c === "refresh" && method === "POST") {
       const res = await P.refreshProcess(ctx, q.id, { onDemand: true });
-      await E.evaluateQuestion(ctx, space, q.id);
       return { ...questionDetail(ctx, space, id), refresh: res };
-    } else if (c === "manual" && method === "POST") {
-      P.manualUpdate(ctx, q, actor, r.body);
-      await E.evaluateQuestion(ctx, space, q.id);
-    } else throw notFound();
+    } else if (c === "manual" && method === "POST") P.manualUpdate(ctx, q, actor, r.body);
+    else throw notFound();
     return questionDetail(ctx, space, id);
   }
 
-  if (method !== "POST" || c) throw notFound();
-  const body = r.body ?? {};
-  switch (b) {
-    case "adopt":
-      await Q.adopt(ctx, space, q, actor, body);
-      break;
-    case "activate":
-      await Q.activate(ctx, space, q, actor, body);
-      break;
-    case "park":
-      Q.park(ctx, space, q, actor, body);
-      break;
-    case "revive":
-      Q.revive(ctx, space, q, actor);
-      break;
-    case "drop":
-      Q.drop(ctx, space, q, actor, body);
-      break;
-    case "restore":
-      Q.restore(ctx, space, q, actor, body);
-      break;
-    case "reopen":
-      await Q.reopen(ctx, space, q, actor, body);
-      break;
-    case "hand_over":
-      Q.handOver(ctx, space, q, actor, body);
-      break;
-    case "take_over":
-      Q.takeOver(ctx, space, q, actor);
-      break;
-    case "object":
-      E.object(ctx, space, q, actor, body);
-      break;
-    case "address":
-      E.address(ctx, space, q, actor, body);
-      await E.evaluateQuestion(ctx, space, q.id);
-      break;
-    case "attest":
-      await E.attest(ctx, space, q, actor, body);
-      break;
-    case "confirm":
-      await E.confirm(ctx, space, q, actor, body);
-      break;
-    default:
-      throw notFound();
+  if (b === "related") {
+    if (!c && method === "POST") Q.relate(ctx, space, q, actor, r.body);
+    else if (c && method === "DELETE") Q.unrelate(ctx, space, q, actor, c);
+    else throw notFound();
+    return questionDetail(ctx, space, id);
   }
-  return questionDetail(ctx, space, id);
+
+  throw notFound();
 }

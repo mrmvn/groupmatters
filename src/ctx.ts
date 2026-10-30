@@ -7,6 +7,8 @@ export type Config = {
   publicUrl: string;
   githubToken?: string;
   gitlabToken?: string;
+  /** Metaculus requires a token for all API calls; without it Metaculus links are updated by hand. */
+  metaculusToken?: string;
   /** Hosts the GitLab adapter may call. gitlab.com plus operator-configured self-hosted instances. */
   gitlabHosts: string[];
   /** Interval for criteria evaluation and refresh scheduling. */
@@ -22,6 +24,8 @@ export type Ctx = {
   now: () => Date;
   fetch: Fetcher;
   config: Config;
+  /** DNS lookup used to keep page fetches (title pre-fill) off private networks. Injectable for tests. */
+  lookup?: (host: string) => Promise<string[]>;
 };
 
 export function loadConfig(env = process.env): Config {
@@ -33,6 +37,7 @@ export function loadConfig(env = process.env): Config {
     publicUrl: (env.PUBLIC_URL ?? `http://localhost:${port}`).replace(/\/+$/, ""),
     githubToken: env.GITHUB_TOKEN || undefined,
     gitlabToken: env.GITLAB_TOKEN || undefined,
+    metaculusToken: env.METACULUS_TOKEN || undefined,
     gitlabHosts: ["gitlab.com", ...(env.GITLAB_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)],
     tickMs: Number(env.TICK_MS ?? 15 * 60 * 1000),
     writeRateLimitPerMinute: Number(env.WRITE_RATE_LIMIT ?? 120),

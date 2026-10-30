@@ -19,6 +19,7 @@ The register is a single Node process with a single SQLite file. It needs no oth
 | `GITHUB_TOKEN` | — | Optional. Raises GitHub's limit from 60 to 5,000 requests/h. A fine-grained token with **no** permissions is enough for public repos |
 | `GITLAB_TOKEN` | — | Optional, gitlab.com only |
 | `GITLAB_HOSTS` | — | Comma-separated self-hosted GitLab hosts the server may call, e.g. `git.example.org` |
+| `METACULUS_TOKEN` | — | Optional. Metaculus requires an API token for every request; with one, Metaculus links are fetched automatically. Without it they're updated by hand |
 | `TICK_MS` | `900000` | Scheduler interval (refresh + evaluation), 15 min |
 | `WRITE_RATE_LIMIT` | `120` | Writes per minute per link |
 | `LOG_REQUESTS` | — | Set to log requests (tokens are redacted) |
@@ -97,5 +98,8 @@ For a portable, human-readable copy, also keep the JSON export of each space.
 
 - Every response carries `Referrer-Policy: no-referrer` and a strict CSP. External links use `rel="noopener noreferrer"`.
 - Only tokens' SHA-256 hashes are stored. A lost link can't be recovered, only rotated.
-- Adapters only call `api.github.com`, `gitlab.com` and hosts listed in `GITLAB_HOSTS`. Manual tools never fetch anything.
+- Adapters call `api.github.com`, `gitlab.com`, hosts listed in `GITLAB_HOSTS`, `www.loomio.com`, `pol.is` and `www.metaculus.com`, plus **Decidim and Consul instances**: any host whose links match (Decidim) or that a space added (Consul), but only after checking that the host resolves to public addresses. The server needs working DNS for that (behind a proxy without local DNS, Decidim/Consul links and title pre-fill fail safely).
+- **Title pre-fill** for manual tools fetches the linked page once when a link is pasted or attached: https only, port 443, public addresses only (DNS checked at every redirect hop), 512 KB, 8 s timeout. Only links matching a tool's patterns are fetched.
+- Behind an outgoing HTTP proxy, start Node with `NODE_USE_ENV_PROXY=1` so `fetch` uses `HTTPS_PROXY`.
+- **Upgrades**: before a schema migration, the server writes a snapshot next to the database (`register.sqlite.before-vN.bak`).
 - There are no analytics, trackers or third-party assets.

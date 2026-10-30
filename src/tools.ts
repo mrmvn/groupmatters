@@ -33,7 +33,9 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "metaculus",
     name: "Metaculus",
-    fetch_mode: "manual",
+    // Automatic only when the operator sets METACULUS_TOKEN; otherwise updated by hand.
+    fetch_mode: "auto",
+    adapter: "metaculus",
     enabled: true,
     url_patterns: [
       { pattern: "https://www.metaculus.com/questions/:id(\\d+){/*}?", item_type: "question" },
@@ -53,7 +55,9 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "loomio",
     name: "Loomio",
-    fetch_mode: "manual",
+    // Public polls and threads are fetched; private ones fall back to updating by hand.
+    fetch_mode: "auto",
+    adapter: "loomio",
     enabled: true,
     url_patterns: [
       { pattern: "https://www.loomio.com/p/:key{/*}?", item_type: "poll" },
@@ -74,13 +78,30 @@ export const SEED_TOOLS: Tool[] = [
   {
     id: "polis",
     name: "Polis",
-    fetch_mode: "manual",
+    fetch_mode: "auto",
+    adapter: "polis",
     enabled: true,
     url_patterns: [
       { pattern: "https://pol.is/report/:id", item_type: "conversation" },
       { pattern: "https://pol.is/:id", item_type: "conversation" },
     ],
     state_map: { Open: "open", Closed: "concluded" },
+  },
+  {
+    // Any Decidim instance: its URLs are distinctive, and fetches only go to public addresses.
+    id: "decidim",
+    name: "Decidim",
+    fetch_mode: "auto",
+    adapter: "decidim",
+    enabled: true,
+    url_patterns: [
+      { pattern: "https://*/:space(processes|assemblies|conferences|initiatives)/:slug/f/:component(\\d+)/proposals/:id(\\d+){/*}?", item_type: "proposal" },
+      { pattern: "https://*/:space(processes|assemblies|conferences|initiatives)/:slug/f/:component(\\d+)/debates/:id(\\d+){/*}?", item_type: "debate" },
+      { pattern: "https://*/:space(processes|assemblies|conferences|initiatives)/:slug/f/:component(\\d+)/meetings/:id(\\d+){/*}?", item_type: "meeting" },
+      { pattern: "https://*/processes/:slug{/}?", item_type: "participatory_process" },
+    ],
+    // Used only if an item can't be fetched (private): its state is then set by hand.
+    state_map: { Open: "open", Evaluating: "open", Accepted: "accepted", Rejected: "rejected", Withdrawn: "withdrawn", Finished: "concluded" },
   },
   {
     id: "kialo",
@@ -95,7 +116,8 @@ export const SEED_TOOLS: Tool[] = [
   },
 ];
 
-export type Match = { tool: Tool; item_type: string; parsed?: Parsed };
+/** `fetch_mode` is the effective mode: an auto tool whose adapter isn't usable here acts as manual. */
+export type Match = { tool: Tool; item_type: string; parsed?: Parsed; fetch_mode: "auto" | "manual" };
 
 const patternCache = new Map<string, URLPattern>();
 function compile(p: string): URLPattern {
@@ -120,10 +142,12 @@ export function matchUrl(ctx: Ctx, tools: Tool[], url: string): Match | undefine
         continue;
       }
       if (!ok) continue;
-      if (tool.fetch_mode === "manual") return { tool, item_type };
+      if (tool.fetch_mode === "manual") return { tool, item_type, fetch_mode: "manual" };
       const adapter = tool.adapter ? getAdapter(tool.adapter) : undefined;
       const parsed = adapter?.parse(url, ctx);
-      if (parsed) return { tool, item_type: parsed.item_type, parsed };
+      if (!parsed) continue;
+      const usable = !adapter!.available || adapter!.available(ctx);
+      return { tool, item_type: parsed.item_type, parsed, fetch_mode: usable ? "auto" : "manual" };
     }
   }
   return undefined;
@@ -152,6 +176,21 @@ export function validateStateMap(m: unknown): Record<string, NormalizedState> | 
   }
   return Object.keys(out).length ? out : undefined;
 }
+
+/** Tools added by giving an instance's address: the patterns are generated, the adapter fetches. */
+export const INSTANCE_KINDS: Record<string, { name: string; adapter: string; patterns: (host: string) => { pattern: string; item_type: string }[]; state_map: Record<string, NormalizedState> }> = {
+  consul: {
+    name: "Consul Democracy",
+    adapter: "consul",
+    patterns: (host) => [
+      { pattern: `https://${host}/proposals/:id{/*}?`, item_type: "proposal" },
+      { pattern: `https://${host}/debates/:id{/*}?`, item_type: "debate" },
+      { pattern: `https://${host}/budgets/:id(\\d+)/investments/:inv{/*}?`, item_type: "investment" },
+      { pattern: `https://${host}/budgets/:id(\\d+){/}?`, item_type: "budget" },
+    ],
+    state_map: { Open: "open", Started: "open", Done: "accepted", Unfeasible: "rejected", Retired: "withdrawn", Finished: "concluded" },
+  },
+};
 
 /** A pattern suggestion for "propose adding this tool": same host, any path. */
 export function suggestPattern(url: string): { name: string; pattern: string } | undefined {
