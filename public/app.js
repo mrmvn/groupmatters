@@ -180,19 +180,29 @@ function linkFromDrop(dt) {
 }
 
 function installLinkDrop() {
-  let depth = 0;
+  // dragenter/dragleave pairs are unreliable (child elements, dragging out of the window, cancelled drags),
+  // so the overlay is kept alive by dragover (fires every ~50ms) and cleared when it stops.
+  let timer = null;
   const hasLink = (e) => [...(e.dataTransfer?.types ?? [])].some((t) => t === "text/uri-list" || t === "text/plain");
-  const done = () => ((depth = 0), document.body.classList.remove("dropping"));
+  const done = () => {
+    clearTimeout(timer);
+    document.body.classList.remove("dropping");
+  };
   document.addEventListener("dragenter", (e) => {
-    if (!hasLink(e)) return;
-    depth++;
-    document.body.classList.add("dropping");
+    if (hasLink(e)) document.body.classList.add("dropping");
   });
-  document.addEventListener("dragleave", () => {
-    if (--depth <= 0) done();
+  document.addEventListener("dragleave", (e) => {
+    if (!e.relatedTarget) done(); // left the window
   });
+  document.addEventListener("dragend", done);
+  window.addEventListener("blur", done);
+  // Any normal interaction means no drag is in progress.
+  for (const t of ["mousemove", "pointerdown", "keydown", "mouseover"]) document.addEventListener(t, done, true);
   document.addEventListener("dragover", (e) => {
     if (!hasLink(e)) return;
+    document.body.classList.add("dropping");
+    clearTimeout(timer);
+    timer = setTimeout(done, 600); // some browsers only repeat dragover every ~350ms
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   });
