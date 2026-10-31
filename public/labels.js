@@ -48,19 +48,19 @@ export const ROLE = {
 
 /** What a relation says when made from a question ("this question is …"): menu text, the symbol on suggestions, and the toast. */
 export const RELATE_AS = {
-  related: { menu: "is related to", symbol: "＋", hint: "Relate this existing question", done: "Related" },
-  child_of: { menu: "is a child of", symbol: "↳", hint: "Make this question a child of it", done: "Made a child" },
-  parent_of: { menu: "is the parent of", symbol: "↱", hint: "Make this question its parent", done: "Made the parent" },
-  duplicate_of: { menu: "is a duplicate of", symbol: "≡", hint: "Mark this question as a duplicate of it", done: "Marked as duplicate" },
-  duplicated_by: { menu: "is duplicated by", symbol: "≡", hint: "Mark it as a duplicate of this question", done: "Marked as duplicate" },
+  related: { menu: "is related to", symbol: "＋", hint: "Relate this existing matter", done: "Related" },
+  child_of: { menu: "is a child of", symbol: "↳", hint: "Make this matter a child of it", done: "Made a child" },
+  parent_of: { menu: "is the parent of", symbol: "↱", hint: "Make this matter its parent", done: "Made the parent" },
+  duplicate_of: { menu: "is a duplicate of", symbol: "≡", hint: "Mark this matter as a duplicate of it", done: "Marked as duplicate" },
+  duplicated_by: { menu: "is duplicated by", symbol: "≡", hint: "Mark it as a duplicate of this matter", done: "Marked as duplicate" },
 };
 
 export const ACTION = {
-  "question.created": "added the question",
-  "question.edited": "edited the question",
+  "question.created": "added the matter",
+  "question.edited": "edited the matter",
   "question.status_changed": "changed the status",
-  "question.removed": "removed the question",
-  "question.restored": "restored the question",
+  "question.removed": "removed the matter",
+  "question.restored": "restored the matter",
   "process.attached": "linked a process",
   "process.replaced": "replaced the process",
   "process.removed": "removed the process",
@@ -70,8 +70,8 @@ export const ACTION = {
   "process.tool_matched": "linked to a tool on the list",
   "process.state_changed": "process state changed",
   "process.now_manual": "process can't be fetched any more; now updated by hand",
-  "relation.added": "linked it to another question",
-  "relation.removed": "removed a link to another question",
+  "relation.added": "linked it to another matter",
+  "relation.removed": "removed a link to another matter",
   "tool.added": "added a tool",
   "tool.edited": "edited a tool",
   "tool.enabled": "enabled a tool",
@@ -82,7 +82,7 @@ export const ACTION = {
   "space.created": "created the space",
   "model.simplified": "simplified the register",
   // From the earlier decision model (kept readable in the history)
-  "question.reopened": "reopened the question",
+  "question.reopened": "reopened the matter",
   "steward.changed": "changed the steward",
   "criteria.changed": "changed the answer criteria",
   "objection.raised": "objected",
@@ -90,7 +90,7 @@ export const ACTION = {
   "objection_window.resumed": "objection window resumed",
   "resolution.pending": "ready to resolve",
   "resolution.cancelled": "pending resolution cancelled",
-  "resolution.confirmed": "resolved the question",
+  "resolution.confirmed": "resolved the matter",
 };
 
 /** Old statuses, for history lines written before the status model changed. */

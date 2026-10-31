@@ -5,33 +5,33 @@
 export const PROMPTS = [
   // Warm / invitational
   "What does your group need to decide?",
-  "Is it time to ask the group your most important question?",
-  "What's the question that's been waiting?",
+  "Is it time to bring the group your most important matter?",
+  "What's the matter that's been waiting?",
   "What does the group keep coming back to?",
-  "The group can only answer what someone writes down.",
+  "The group can only settle what someone writes down.",
   "What's the one thing only the group can settle?",
   // Playful / self-aware
   "What are you lot up to?",
   "Collectively organising?",
   "Time to harness this collective intelligence.",
-  "One more question won't hurt. Probably.",
+  "One more matter won't hurt. Probably.",
   "Democracy: now with a text box.",
-  "Somewhere to put the question before it puts you.",
-  "No agenda? Start with a question.",
-  "You bring the question; the group brings the rest.",
+  "Somewhere to put the matter before it puts you.",
+  "No agenda? Start with a matter.",
+  "You bring the matter; the group brings the rest.",
 
   // Dry / wry
   "What's the unresolved thing this time?",
-  "Another question? Go on then.",
+  "Another matter? Go on then.",
   "Put it here before it becomes a meeting.",
-  "The question you were going to raise anyway.",
-  "Long list? Short question.",
-  "If you're unsure, that's usually a question.",
+  "The matter you were going to raise anyway.",
+  "Long list? Short title.",
+  "If you're unsure, that's usually a matter worth writing down.",
 
   // Purposeful / encouraging
-  "Every decision starts as a question someone dared to ask.",
-  "A good question, written down, is a decision waiting to happen.",
-  "Small question, big progress.",
+  "Every decision starts as a matter someone dared to raise.",
+  "A matter, written down, is a decision waiting to happen.",
+  "Small matter, big progress.",
   "What would move things forward today?",
   "Naming it is half the meeting.",
 ];

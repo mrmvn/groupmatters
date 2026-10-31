@@ -20,7 +20,7 @@ function log(ctx: Ctx, q: Question, actor: string, action: string, data: Record<
 
 export function load(ctx: Ctx, space: Space, id: string): Question {
   const q = repo.getQuestion(ctx.db, space.id, String(id));
-  if (!q) throw notFound("Question not found");
+  if (!q) throw notFound("Matter not found");
   return q;
 }
 
@@ -50,9 +50,9 @@ function assertLinkFree(ctx: Ctx, space: Space, url: string | undefined, exclude
 function validateRelated(ctx: Ctx, space: Space, q: { id?: string }, otherId: unknown): Question | undefined {
   if (otherId == null || otherId === "") return undefined;
   const oid = String(otherId);
-  if (oid === q.id) throw bad("A question can't be related to itself");
+  if (oid === q.id) throw bad("A matter can't be related to itself");
   const other = repo.getQuestion(ctx.db, space.id, oid);
-  if (!other || other.removed_at) throw bad("Related question not found");
+  if (!other || other.removed_at) throw bad("Related matter not found");
   return other;
 }
 
@@ -177,7 +177,7 @@ export async function attachProcess(ctx: Ctx, space: Space, q: Question, actor: 
 
 /** Hide a question (spam, mistake, test). It stays in the database and the history, and can be restored. */
 export function remove(ctx: Ctx, space: Space, q: Question, actor: string, body: any): Question {
-  if (q.removed_at) throw conflict("This question is already removed");
+  if (q.removed_at) throw conflict("This matter is already removed");
   const reason = trimOrUndef(body?.reason, 1000);
   q.removed_at = ctx.now().toISOString();
   tx(ctx.db, () => {
@@ -188,7 +188,7 @@ export function remove(ctx: Ctx, space: Space, q: Question, actor: string, body:
 }
 
 export function restore(ctx: Ctx, space: Space, q: Question, actor: string): Question {
-  if (!q.removed_at) throw conflict("This question isn't removed");
+  if (!q.removed_at) throw conflict("This matter isn't removed");
   // Someone may have added the same question or link in the meantime.
   assertTitleFree(ctx, space, q.title, q.id);
   assertLinkFree(ctx, space, q.process?.url, q.id);
@@ -216,7 +216,7 @@ function insertRelation(ctx: Ctx, space: Space, q: Question, other: Question, ac
   const existing = repo.relationsOf(ctx.db, from.id).find(
     (r) => (r.from_id === from.id && r.to_id === to.id) || (r.from_id === to.id && r.to_id === from.id),
   );
-  if (existing) throw conflict("These questions are already related", "already_related");
+  if (existing) throw conflict("These matters are already related", "already_related");
   if (kind === "child_of") {
     // The hierarchy can't loop: `to` must not already be `from` or below it.
     const chain = hierarchyLoop(repo.listRelations(ctx.db, space.id), from.id, to.id);
@@ -243,14 +243,14 @@ function insertRelation(ctx: Ctx, space: Space, q: Question, other: Question, ac
 export function relate(ctx: Ctx, space: Space, q: Question, actor: string, body: any) {
   const how = relationInput(body?.kind);
   const other = validateRelated(ctx, space, q, body?.id);
-  if (!other) throw bad("Choose a question to relate");
+  if (!other) throw bad("Choose a matter to relate");
   tx(ctx.db, () => insertRelation(ctx, space, q, other, actor, how));
 }
 
 /** Remove the relation between q and another question, whichever its direction and kind. */
 export function unrelate(ctx: Ctx, space: Space, q: Question, actor: string, otherId: string) {
   const r = repo.relationsOf(ctx.db, q.id).find((r) => r.from_id === otherId || r.to_id === otherId);
-  if (!r) throw notFound("These questions aren't related");
+  if (!r) throw notFound("These matters aren't related");
   const other = load(ctx, space, otherId);
   tx(ctx.db, () => {
     repo.deleteRelation(ctx.db, r);

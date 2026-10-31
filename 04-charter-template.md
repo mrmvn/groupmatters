@@ -1,5 +1,7 @@
 # How this register works
 
+> **Historical design document.** Written before the pilot; parts (adopt, criteria, stewards, snapshots, active cap) were removed. See `DECISIONS.md` and `docs/` for what the app does now.
+
 *Default charter. For now it is changed by the people running the register.*
 
 ## What this register is for

@@ -12,6 +12,7 @@ import { setStatusLabels } from "../src/rules.ts";
 import { fieldViews } from "../src/fields.ts";
 import { tick } from "../src/scheduler.ts";
 import { list } from "../src/search.ts";
+import { setCharter } from "../src/spaces.ts";
 import { arrange } from "../src/relations.ts";
 
 const openPr = () => ({ body: fixture("github_pr_open.json") });
@@ -501,4 +502,14 @@ test("results can be a link or plain words; a non-https link is refused", async 
   Q.updateFields(ctx, space, q, "Ana", { set: { results_url: "https://example.org/results" } });
   assert.equal(fieldViews(q).results_url.value, "https://example.org/results");
   assert.throws(() => Q.updateFields(ctx, space, q, "Ana", { set: { results_url: "ftp://example.org/x" } }), /https/);
+});
+
+test("set-charter replaces the charter and logs it; empty text is refused", () => {
+  const t = makeCtx();
+  const { space } = makeSpace(t.ctx);
+  setCharter(t.ctx, space.id, "# New rules\n\nBe kind.\n");
+  assert.equal(repo.getSpace(t.ctx.db, space.id)!.charter_markdown, "# New rules\n\nBe kind.\n");
+  assert.ok(actions(t.ctx, space.id).includes("charter.changed"));
+  assert.throws(() => setCharter(t.ctx, space.id, "  \n"), /empty/);
+  assert.throws(() => setCharter(t.ctx, "nope", "x"), /No space/);
 });

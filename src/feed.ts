@@ -16,7 +16,7 @@ const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]!);
 
 export function describeEvent(e: ActivityEvent, titles: Map<string, string>): string {
-  const t = e.question_id ? `“${titles.get(e.question_id) ?? "a question"}”` : "the space";
+  const t = e.question_id ? `“${titles.get(e.question_id) ?? "a matter"}”` : "the space";
   const d = e.data as any;
   switch (e.action) {
     case "question.created":

@@ -1,4 +1,4 @@
-# Question register
+# Group Matters
 
 A small web app where a group collects questions that need a collective answer. Each question can be attached to the process where it's worked on (a GitHub PR, a Loomio poll, a Polis conversation, a meeting…), and its status follows that process or is set by hand.
 
@@ -21,7 +21,7 @@ Create a real space with `node src/cli.ts create-space "Our group"`. It prints a
 
 - Questions with a **status category** (not started, in progress, accepted, rejected, concluded, withdrawn). A question follows its process, or its status is set by hand from the space's editable status labels. Relations between questions (parent/child, related, duplicate), shown on both sides; children are listed under their parents, and duplicates suggest being withdrawn.
 - One process per question: a link from the space's **tool list**, or a **custom** process (a meeting, an unconference…) with or without a link. GitHub, GitLab, public Loomio polls/threads, Polis, OpaVote, Decidim (any instance) and Consul Democracy (per instance) are fetched automatically (state, results, last activity); Metaculus too with an API token. Other tools are updated by hand, with the page title used to prefill questions. See `docs/TOOLS.md`.
-- A **dashboard** (in the top-right menu): prototype widgets of fixed sizes for tools, statuses, momentum, attention, personal impact and milestones, each hideable.
+- A **dashboard** (in the top-right menu): prototype widgets of fixed sizes for tools, statuses, momentum, attention and recent answers, each hideable (collective numbers only: no individual rankings).
 - A **Tools** page (tool list, status labels, editable by anyone with edit access), **How this works** (the charter), the activity log and export, from the top-right menu.
 - An append-only **activity log** (enforced by database triggers), "changed since your last visit", an Atom feed and a full JSON export.
 - Access by secret link plus a display name; no accounts.
@@ -42,7 +42,7 @@ src/            server (TypeScript, run directly by Node)
   http/         router + JSON API
   cli.ts        operator commands
 public/         UI (vanilla JS modules, no build)
-seed/charter.md default charter
+seed/charter.md default charter (change a space's with `set-charter`)
 test/           node:test suites + recorded API fixtures
 docs/           API, tools & statuses, export format, deployment, user guide
 DECISIONS.md    implementation decisions
@@ -59,11 +59,11 @@ DECISIONS.md    implementation decisions
 | `docs/EXPORT.md` | Export format `question-register/v3` |
 | `DECISIONS.md` | Implementation decisions and M0 API findings |
 
-## Design documents (hand-off pack)
+## Design documents (historical hand-off pack)
 
 | File | What it is |
 |---|---|
 | `01-project.md` | Vision, problem, users, principles, non-goals, prior art |
-| `02-v0-spec.md` | The v0 specification, the source of truth |
+| `02-v0-spec.md` | The v0 specification (historical: see `DECISIONS.md` and `docs/` for current behaviour) |
 | `03-plan.md` | Milestones, acceptance criteria, stack suggestions, security checklist |
 | `04-charter-template.md` | Default rules a group starts with (copied to `seed/charter.md`) |

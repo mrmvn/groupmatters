@@ -42,3 +42,18 @@ export function rotateLink(ctx: Ctx, spaceId: string, which: Role) {
 }
 
 export const spaceLink = (ctx: Ctx, token: string) => `${ctx.config.publicUrl}/s/${token}`;
+
+/** Operator action: replace the space's charter (the markdown text). Logged, with its size only. */
+export function setCharter(ctx: Ctx, spaceId: string, markdown: string) {
+  const space = repo.getSpace(ctx.db, spaceId);
+  if (!space) throw new Error(`No space with id ${spaceId}`);
+  const text = markdown.trim();
+  if (!text) throw new Error("The charter can't be empty");
+  if (text.length > 20000) throw new Error("The charter is too long (20000 characters at most)");
+  space.charter_markdown = text + "\n";
+  tx(ctx.db, () => {
+    repo.updateSpace(ctx.db, space);
+    repo.logEvent(ctx, { space_id: spaceId, actor: "operator", action: "charter.changed", data: { length: text.length } });
+  });
+  return space;
+}

@@ -182,7 +182,7 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
 
   const q = Q.load(ctx, space, id);
   // A removed question is read-only until restored.
-  if (isWrite && q.removed_at && b !== "restore") throw new HttpError(409, "removed", "This question was removed. Restore it first.");
+  if (isWrite && q.removed_at && b !== "restore") throw new HttpError(409, "removed", "This matter was removed. Restore it first.");
 
   if (!b) {
     if (method === "GET") return questionDetail(ctx, space, id);

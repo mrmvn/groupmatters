@@ -1,5 +1,7 @@
 # v0 specification
 
+> **Historical design document.** Written before the pilot; parts (adopt, criteria, stewards, snapshots, active cap) were removed. See `DECISIONS.md` and `docs/` for what the app does now.
+
 This document is the source of truth for v0. Markers:
 - **(decide)**: implementer chooses, records the choice in `DECISIONS.md`.
 - **(deferred)**: not in v0; keep the model compatible where noted.

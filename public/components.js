@@ -89,10 +89,10 @@ export function questionCard(q, ctx, children = [], kidIds = []) {
       h(
         "div",
         { class: "card-head" },
-        h("span", null, q.nested_as === "duplicate" ? h("span", { class: "card-tag", title: "Duplicate of the question above it" }, "≡ duplicate ") : null, h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title)),
+        h("span", null, q.nested_as === "duplicate" ? h("span", { class: "card-tag", title: "Duplicate of the matter above it" }, "≡ duplicate ") : null, h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title)),
         questionPill(q),
       ),
-      q.cluster ? h("span", { class: "visually-hidden" }, "Related to the neighbouring question") : null,
+      q.cluster ? h("span", { class: "visually-hidden" }, "Related to the neighbouring matter") : null,
       h(
         "div",
         { class: "card-meta" },
@@ -124,7 +124,7 @@ export function questionTree(questions, ctx) {
 /** "child of “X”", "parent of “X”", "duplicate of “X”"… for a relation event, from the side of the question it was logged on. */
 function relationDetail(e, d) {
   const self = e.question_id === d.from_id;
-  const other = d.other_title ? `“${d.other_title}”` : "another question";
+  const other = d.other_title ? `“${d.other_title}”` : "another matter";
   if (d.kind === "child_of") return `${self ? "child" : "parent"} of ${other}`;
   if (d.kind === "duplicate") return self ? `duplicate of ${other}` : `duplicated by ${other}`;
   return `related to ${other}`;

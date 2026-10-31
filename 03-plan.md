@@ -1,5 +1,7 @@
 # v0 implementation plan
 
+> **Historical design document.** Written before the pilot; parts (adopt, criteria, stewards, snapshots, active cap) were removed. See `DECISIONS.md` and `docs/` for what the app does now.
+
 Goal: a deployable v0 that one real group can use for a month-long pilot. Scope is defined in `02-v0-spec.md`.
 
 ## Stack suggestions

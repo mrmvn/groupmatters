@@ -1,5 +1,7 @@
 # Project description
 
+> **Historical design document.** Written before the pilot; parts (adopt, criteria, stewards, snapshots, active cap) were removed. See `DECISIONS.md` and `docs/` for what the app does now.
+
 ## One-line summary
 
 A process-agnostic register of questions a group needs to answer collectively. Each question links to the external tool that will answer it, states what counts as "answered," and keeps a record of the outcome.

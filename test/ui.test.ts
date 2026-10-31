@@ -111,7 +111,7 @@ test("header: no tabs; the space name opens the items; the menu has Dashboard, T
   assert.ok(list.hasAttribute("hidden"));
   // The page opens on the bar to add an item.
   assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or link your process");
-  assert.match((await go("#/how")).textContent!, /How this register works/);
+  assert.match((await go("#/how")).textContent!, /How this space works/);
   assert.match((await go("#/rules")).textContent!, /Tool list/);
   assert.ok(document.querySelector('main a[href="#/list"]'), "a way back to the items");
 });
@@ -135,11 +135,11 @@ test("items page: a list/timeline toggle (list selected by default) keeps the fi
 test("dashboard renders its widgets; hiding one is remembered and can be undone", async () => {
   const main = await go("#/dashboard");
   const titles = [...main.querySelectorAll(".widget h2")].map((x: any) => x.textContent);
-  for (const w of ["At a glance", "Top tools used", "Questions by status", "Needs attention", "Your impact", "Milestones", "Momentum, last 12 weeks"]) assert.ok(titles.includes(w), w);
-  for (const w of ["Activity", "Who's active", "Monthly goal"]) assert.ok(!titles.includes(w), `${w} was removed`);
+  for (const w of ["At a glance", "Top tools used", "Matters by status", "Needs attention", "Momentum, last 12 weeks"]) assert.ok(titles.includes(w), w);
+  for (const w of ["Activity", "Who's active", "Monthly goal", "Your impact", "Milestones"]) assert.ok(!titles.includes(w), `${w} was removed`);
   assert.ok([...main.querySelectorAll(".widget")].every((el: any) => /\bc[124]\b/.test(el.className)), "every widget declares how many columns it spans");
   assert.ok(main.querySelector('.widget a[href="#/list?lane=all&tool=custom"]'), "tools link to the filtered list");
-  assert.match(main.textContent!, /asked/, "personal widget uses the display name");
+  assert.doesNotMatch(main.textContent!, /🔥|#\d+ of \d+ active/, "no streak or individual rank");
   (main.querySelector(".widget-hide") as any).click();
   assert.equal(JSON.parse(store.get("qr:dash:hidden")!).length, 1);
   assert.equal(main.querySelectorAll(".widget[hidden]").length, 1);
@@ -169,7 +169,7 @@ test("rules pages and activity render", async () => {
   assert.match(rules.textContent!, /Tool list/);
   const add = await go("#/rules/add-tool?url=https%3A%2F%2Fforum.example.org%2Ft%2F1");
   assert.match(add.textContent!, /Add a tool/);
-  assert.match((await go("#/activity")).textContent!, /added the question/);
+  assert.match((await go("#/activity")).textContent!, /added the matter/);
 });
 
 test("composer: a prompt line shows while the bar is idle and hides once you type", async () => {
@@ -362,7 +362,7 @@ test("timeline page: only dated questions, bars placed over time, same filters a
   assert.ok(ended.querySelector('a[href="#/list?lane=ended"]'), "same filters as a list");
   const list = await go("#/list?lane=ended");
   assert.ok(list.querySelector('a[href="#/list?lane=ended&view=timeline"]'), "and back");
-  assert.match((await go("#/timeline?q=zzzz-nothing")).textContent!, /No dated questions match/);
+  assert.match((await go("#/timeline?q=zzzz-nothing")).textContent!, /No dated matters match/);
 });
 
 test("rules: status labels panel renders and edits", async () => {
@@ -415,12 +415,16 @@ test("flow: pasting an already tracked link shows the existing question", async 
   assert.match(notice.textContent, /already tracked by Should CI use the newer upload-artifact action\?/);
 });
 
-test("flow: a removed question can be restored from the Rules page", async () => {
+test("flow: a question is removed from its ⋯ menu and restored from the Removed lane", async () => {
   const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title.startsWith("Should we print t-shirts"))!;
-  // The question page has no Edit or Remove button: removal is an API action.
   const page = await go(`#/q/${q.id}`);
-  assert.deepEqual(buttons("Edit").concat(buttons("Remove…")), []);
+  assert.deepEqual(buttons("Edit"), []);
   assert.equal(page.textContent!.includes("null"), false);
+  // Remove… is behind the ⋯ menu.
+  const more = page.querySelector(".more-btn") as any;
+  assert.ok(more, "⋯ button");
+  assert.equal(buttons("Remove…").length, 1);
+  assert.ok(more.closest(".menu").querySelector(".menu-list").hidden, "closed at first");
   // @ts-ignore (browser module)
   await (await import("../public/api.js")).api("POST", `questions/${q.id}/remove`, {});
   // Saving anything in the app reloads the counts.
@@ -431,8 +435,11 @@ test("flow: a removed question can be restored from the Rules page", async () =>
   await go(`#/q/${q.id}`);
   assert.ok(repo.getQuestion(t.ctx.db, demo.space.id, q.id)!.removed_at);
   assert.match(document.querySelector("main")!.textContent!, /Removed/);
-  const rules = await go("#/rules");
-  assert.match(rules.textContent!, /Removed questions \(1\)/);
+  assert.doesNotMatch((await go("#/rules")).textContent!, /Removed questions/, "no longer on the Tools page");
+  const removed = await go("#/list?lane=removed");
+  assert.match(document.querySelector("main .sublanes")!.textContent!, /Removed \(1\)/);
+  assert.match(removed.textContent!, /Should we print t-shirts/);
+  await go(`#/q/${q.id}`);
   buttons("Restore")[0].dispatchEvent(new window.Event("click"));
   await sleep(200);
   await settle();
@@ -578,12 +585,12 @@ test("hierarchy: children nested under their parent in the list and the timeline
   assert.deepEqual([...page.querySelectorAll(".rel-list li")].map((li: any) => [li.querySelector(".rel-kind").textContent.trim(), li.querySelector("a").textContent]), [["Parent:", "Treehouse parent"], ["Related:", "Treehouse cousin"]]);
   const parentPage = await go(`#/q/${parent.id}`);
   assert.deepEqual([...parentPage.querySelectorAll(".rel-list li")].map((li: any) => li.querySelector(".rel-kind").textContent.trim()), ["Child:", "Duplicated by:"]);
-  assert.match(parentPage.querySelector(".rel-hint").textContent, /“Treehouse twin” duplicates this question\. Withdraw it/);
+  assert.match(parentPage.querySelector(".rel-hint").textContent, /“Treehouse twin” duplicates this matter\. Withdraw it/);
 
   // A duplicate suggests being withdrawn; one click does it (typed, with a note).
   const twinPage = await go(`#/q/${twin.id}`);
   const hint = twinPage.querySelector(".rel-hint") as any;
-  assert.match(hint.textContent, /This question duplicates “Treehouse parent”/);
+  assert.match(hint.textContent, /This matter duplicates “Treehouse parent”/);
   hint.querySelector("button").dispatchEvent(new window.Event("click"));
   await sleep(200);
   await settle();

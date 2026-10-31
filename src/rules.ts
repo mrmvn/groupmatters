@@ -137,7 +137,7 @@ export function validateStatusLabels(input: unknown): StatusLabel[] {
     seen.add(key);
     return { label, state: l.state };
   });
-  if (!out.some((l) => l.state === "not_started")) throw bad("Keep at least one status in the “Not started” category (used for new questions)");
+  if (!out.some((l) => l.state === "not_started")) throw bad("Keep at least one status in the “Not started” category (used for new matters)");
   return out;
 }
 

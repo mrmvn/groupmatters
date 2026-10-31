@@ -225,7 +225,7 @@ const summarize = (p: Process) => ({
  */
 export function removeProcess(ctx: Ctx, space: Space, q: Question, actor: string) {
   return tx(ctx.db, () => {
-    if (!q.process) throw bad("This question has no process");
+    if (!q.process) throw bad("This matter has no process");
     repo.deleteProcess(ctx.db, q.id);
     repo.logEvent(ctx, { space_id: space.id, question_id: q.id, actor, action: "process.removed", data: summarize(q.process) });
     delete q.process;

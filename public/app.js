@@ -1,4 +1,4 @@
-// Question register — single-page UI. Hash routes:
+// Group Matters — single-page UI. Hash routes:
 //   #/dashboard              summary widgets (the space name in the header links here)
 //   #/list?lane=current&q=…  the items, as a list or (view=timeline) as bars over time; lanes, search, filters
 //   #/q/<id>                 question page
@@ -28,7 +28,7 @@ const canEditQ = (q) => canEdit() && !q.removed_at;
 async function loadSpace() {
   const d = await api("GET", "space");
   Object.assign(S, d);
-  document.title = `${S.space.name} · Question register`;
+  document.title = `${S.space.name} · Group Matters`;
 }
 
 async function boot() {
@@ -215,7 +215,7 @@ function header(section) {
     h(
       "div",
       { class: "top-row" },
-      h("a", { href: "#/list", class: "space-name", title: "Items" }, S.space.name),
+      h("a", { href: "#/list", class: "space-name", title: "Matters" }, S.space.name),
       h(
         "div",
         { class: "who" },
@@ -234,7 +234,7 @@ function closeMenus() {
     m.querySelector(".menu-btn").setAttribute("aria-expanded", "false");
   }
 }
-const backToItems = () => h("a", { href: "#/list", class: "back" }, "← Items");
+const backToItems = () => h("a", { href: "#/list", class: "back" }, "← Matters");
 
 // ---------------------------------------------------------------- helpers
 
@@ -295,6 +295,7 @@ const LANES = {
   ended: { label: "Ended (accepted, rejected, concluded)", status: ENDED.join(",") },
   withdrawn: { label: "Withdrawn", status: "withdrawn" },
   all: { label: "All", status: "" },
+  removed: { label: "Removed (hidden from the other lanes, kept in the history)", status: "" },
 };
 const PRESETS = [
   ["no_process", "No process yet"],
@@ -316,6 +317,7 @@ function listControls(params, view) {
   const query = Object.fromEntries(FILTER_KEYS.map((k) => [k, params.get(k)]));
   query.status = params.get("status") || (LANES[lane]?.status ?? "");
   if (sort) query.sort = params.get("sort");
+  if (lane === "removed") query.removed = "only";
   // Children under their parent, unless asked for a flat list (`flat=1`).
   const hierarchy = params.get("flat") !== "1";
   if (hierarchy) query.hierarchy = "1";
@@ -327,7 +329,7 @@ function listControls(params, view) {
     location.hash = `#/${route}?${p}`;
   };
 
-  const searchInput = h("input", { type: "search", placeholder: "Search questions…", value: params.get("q") ?? "", "aria-label": "Search questions" });
+  const searchInput = h("input", { type: "search", placeholder: "Search matters…", value: params.get("q") ?? "", "aria-label": "Search matters" });
   const searchForm = h("form", { class: "search", role: "search", onsubmit: (e) => (e.preventDefault(), setParam("q", searchInput.value.trim())) }, searchInput, h("button", { type: "submit", class: "search-btn", "aria-label": "Search", title: "Search", onclick: (e) => { if (!searchInput.value.trim() && params.get("q") == null) (e.preventDefault(), searchInput.focus()); } }, "🔍"));
 
   const sel = (key, label, options, anyLabel = "Any", value = params.get(key) ?? "") =>
@@ -364,7 +366,7 @@ function listControls(params, view) {
       sel("flat", "Children", [["", "Under their parent"], ["1", "Listed apart (flat)"]], null),
     ),
   );
-  const relatedChip = params.get("related") ? h("p", null, "Showing questions related to another · ", h("a", { href: `#/q/${params.get("related")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("related", "") }, "clear")) : null;
+  const relatedChip = params.get("related") ? h("p", null, "Showing matters related to another · ", h("a", { href: `#/q/${params.get("related")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("related", "") }, "clear")) : null;
   // Lanes with counts, beside the search (the same on the list and the timeline). Withdrawn is the Status filter.
   const c = S.counts ?? {};
   const n = (states) => states.reduce((a, s) => a + (c[s] ?? 0), 0);
@@ -375,6 +377,7 @@ function listControls(params, view) {
       ["current", `Current (${n(["not_started", "open"])})`],
       ["ended", `Ended (${n(ENDED)})`],
       ["all", "All"],
+      ...(c.removed ? [["removed", `Removed (${c.removed})`]] : []),
     ].map(([k, label]) => {
       const p = new URLSearchParams(params);
       p.set("lane", k);
@@ -403,16 +406,16 @@ async function pageHome(params) {
     const ctx = { tools: S.tools, since: S.since, space: S.space, hierarchy };
     body = questions.length
       ? h("ul", { class: "cards" }, hierarchy ? questionTree(questions, ctx) : questions.map((q) => questionCard(q, ctx)))
-      : h("p", { class: "empty" }, searching ? "No questions match." : lane === "current" ? "No current questions. Add one above." : "Nothing here yet.");
+      : h("p", { class: "empty" }, searching ? "No matters match." : lane === "removed" ? "Nothing is removed." : lane === "current" ? "No current matters. Add one above." : "Nothing here yet.");
   } else {
     // The questions with a start date as bars over time, to their end (or today).
     const { items, undated, now } = await api("GET", `timeline${qs(query)}`);
     const undatedNote = undated
-      ? h("p", { class: "muted small" }, `${undated} question${undated === 1 ? " has" : "s have"} no start date and ${undated === 1 ? "isn't" : "aren't"} shown. Dates come from the linked process, or can be set on each question.`)
+      ? h("p", { class: "muted small" }, `${undated} matter${undated === 1 ? " has" : "s have"} no start date and ${undated === 1 ? "isn't" : "aren't"} shown. Dates come from the linked process, or can be set on each matter.`)
       : null;
     body = [
-      h("p", { class: "muted small" }, "Each question with a start date, from its start to its end (or today if it's still running). Hover a bar for its dates."),
-      items.length ? h("section", { class: "panel" }, timelineChart(items, now)) : h("p", { class: "empty" }, searching ? "No dated questions match." : "No question has a start date yet."),
+      h("p", { class: "muted small" }, "Each matter with a start date, from its start to its end (or today if it's still running). Hover a bar for its dates."),
+      items.length ? h("section", { class: "panel" }, timelineChart(items, now)) : h("p", { class: "empty" }, searching ? "No dated matters match." : "No matter has a start date yet."),
       undatedNote,
     ];
   }
@@ -420,7 +423,7 @@ async function pageHome(params) {
 }
 
 async function pageDashboard() {
-  const d = await api("GET", `dashboard${qs({ you: getName(), since: S.since })}`);
+  const d = await api("GET", `dashboard${qs({ since: S.since })}`);
   return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name, back: backToItems() });
 }
 
@@ -447,7 +450,7 @@ function composer(opts = {}) {
   const newDetails = (retrieved) => (details = createFields({ labels: S.space.settings.status_labels, kinds: knownKinds(), retrieved }));
   const title = h("input", { type: "text", maxlength: 300 });
   const hints = h("div", { class: "hints" });
-  const submitLabel = () => (opts.relateTo ? RELATE_NEW[opts.kind?.() ?? "related"] : "Add question");
+  const submitLabel = () => (opts.relateTo ? RELATE_NEW[opts.kind?.() ?? "related"] : "Add matter");
   const submitBtn = h("button", { type: "submit", class: "primary" }, submitLabel());
 
   const loadHints = debounce(async (t) => {
@@ -466,7 +469,7 @@ function composer(opts = {}) {
         h(
           "div",
           null,
-          h("span", { class: "muted small" }, opts.relateTo ? "Relate an existing question, or add yours as a new one: " : "Already asked? "),
+          h("span", { class: "muted small" }, opts.relateTo ? "Relate an existing matter, or add yours as a new one: " : "Already asked? "),
           h("ul", { class: "hint-list" }, list.map(item)),
         ),
       );
@@ -492,14 +495,14 @@ function composer(opts = {}) {
       mode = "link";
       title.value = "";
       title.required = true;
-      title.placeholder = "Write the question";
+      title.placeholder = "Write the matter";
       panel.replaceChildren(
         h(
           "div",
           { class: "notice" },
           h("p", null, "This site isn't on the tool list, so nothing is retrieved from the link: you'll type the title, status and dates. ", h("a", { href: `#/rules/add-tool${qs({ url })}` }, "Add this tool"), " to retrieve them."),
         ),
-        field("Question", title),
+        field("Matter", title),
         hints,
         newDetails().el,
         h("div", { class: "row" }, submitBtn),
@@ -510,7 +513,7 @@ function composer(opts = {}) {
     mode = "link";
     title.required = !preview.title;
     title.value = preview.title ?? "";
-    title.placeholder = "Write the question in the group's words";
+    title.placeholder = "Write the matter in the group's words";
     loadHints(title.value);
     panel.replaceChildren(
       h(
@@ -520,7 +523,7 @@ function composer(opts = {}) {
         preview.fetched ? [" · ", statePill(preview.fetched.state, preview.fetched.raw_state), preview.fetched.outcome_summary ? ` ${preview.fetched.outcome_summary}` : ""] : preview.fetch_mode === "manual" ? h("span", { class: "muted" }, " · status and dates will be typed") : null,
         preview.fetch_error ? h("p", { class: "warn" }, preview.fetch_mode === "manual" ? `${preview.fetch_error}: its status and dates will be typed.` : `Couldn't retrieve details: ${preview.fetch_error}`) : null,
       ),
-      field("Question", title, preview.title ? "Retrieved from the link: keep it to follow the item's title, or rewrite it in the group's own words (it's then typed)." : "Write the question in the group's own words."),
+      field("Matter", title, preview.title ? "Retrieved from the link: keep it to follow the item's title, or rewrite it in the group's own words (it's then typed)." : "Write the matter in the group's own words."),
       hints,
       newDetails(retrievedFromPreview(preview)).el,
       h("div", { class: "row" }, submitBtn),
@@ -571,7 +574,7 @@ function composer(opts = {}) {
         let r;
         try {
           r = await api("POST", "questions", body);
-          toast("Question added", "ok");
+          toast("Matter added", "ok");
         } catch (err) {
           if (err.code === "duplicate_title" || err.code === "duplicate_link") {
             panel.querySelector(".notice-existing")?.remove();
@@ -603,10 +606,10 @@ const SEEN_FROM_NEW = { related: "related", child_of: "parent_of", parent_of: "c
 
 /** The button for a new question made from a question's page, by relation. */
 const RELATE_NEW = {
-  related: "Add as a new related question",
-  child_of: "Add as a new parent question",
-  parent_of: "Add as a new child question",
-  duplicate_of: "Add as a new question this duplicates",
+  related: "Add as a new related matter",
+  child_of: "Add as a new parent matter",
+  parent_of: "Add as a new child matter",
+  duplicate_of: "Add as a new matter this duplicates",
   duplicated_by: "Add as a new duplicate",
 };
 
@@ -628,7 +631,7 @@ async function pageQuestion(id) {
     { class: "q-head" },
     h("a", { href: `#/list?lane=${q.status === "withdrawn" ? "withdrawn" : ENDED.includes(q.status) ? "ended" : "current"}`, class: "back" }, "← Back"),
     fieldCell("title", q.fields.title, fc, (v) => h("h1", null, v)),
-    h("div", { class: "row" }, questionPill(q)),
+    h("div", { class: "row" }, questionPill(q), canEditQ(q) ? overflowMenu(q) : null),
     q.removed_at
       ? h(
           "div",
@@ -638,6 +641,8 @@ async function pageQuestion(id) {
           time(q.removed_at, timeAgo(q.removed_at)),
           ". It's hidden from lists and its process is no longer refreshed.",
           canEdit() ? [" ", h("button", { onclick: async () => (await act(() => api("POST", `questions/${q.id}/restore`), "Restored")) && refresh() }, "Restore")] : null,
+          " ",
+          h("a", { href: "#/list?lane=removed" }, "All removed"),
         )
       : null,
     h("dl", { class: "meta" }, h("dt", null, "Added"), h("dd", null, q.created_by, " · ", time(q.created_at))),
@@ -656,6 +661,36 @@ async function pageQuestion(id) {
     relationsBlock(q, d),
     h("section", { class: "panel" }, h("h2", null, "History"), h("ul", { class: "activity" }, d.activity.map((e) => activityItem(e)))),
   );
+}
+
+/** "⋯" menu on a question's page: a disclosure (button + list of buttons). Holds the rarely needed, destructive actions. */
+function overflowMenu(q) {
+  const remove = async () => {
+    closeMenus();
+    const reason = prompt("Remove this matter? It's hidden from the lists but kept in the history, and can be restored.\n\nWhy? (optional)", "");
+    if (reason === null) return;
+    if (await act(() => api("POST", `questions/${q.id}/remove`, reason.trim() ? { reason: reason.trim() } : {}), "Removed")) {
+      await loadSpace();
+      location.hash = "#/list?lane=removed";
+    }
+  };
+  const list = h("div", { class: "menu-list", hidden: true }, h("button", { type: "button", class: "danger-link", onclick: remove }, "Remove…"));
+  const button = h(
+    "button",
+    {
+      type: "button",
+      class: "menu-btn more-btn",
+      "aria-label": "More actions",
+      "aria-expanded": "false",
+      onclick: () => {
+        const wasClosed = list.hidden;
+        closeMenus();
+        if (wasClosed) (list.hidden = false, button.setAttribute("aria-expanded", "true"));
+      },
+    },
+    h("span", { "aria-hidden": "true" }, "⋯"),
+  );
+  return h("div", { class: "menu" }, button, list);
 }
 
 /** Kinds to suggest when typing one: those already in use, and a few common ones. */
@@ -742,7 +777,7 @@ function processBlock(q, d, openForm) {
       "section",
       { class: "panel" },
       h("h2", null, "Attached link"),
-      h("p", { class: "muted" }, "No attached link yet. It points to where the question is worked on: a pull request, a poll, a Polis conversation, a meeting…"),
+      h("p", { class: "muted" }, "No attached link yet. It points to where the matter is worked on: a pull request, a poll, a Polis conversation, a meeting…"),
       canEditQ(q) ? h("button", { onclick: () => openForm(attachForm(q, false)) }, "Add an attached link…") : null,
     );
   }
@@ -763,7 +798,7 @@ function processBlock(q, d, openForm) {
     "↻ Refresh",
   );
   const remove = async () => {
-    if (!confirm("Remove the attached link? The question keeps its title and status, now typed.")) return;
+    if (!confirm("Remove the attached link? The matter keeps its title and status, now typed.")) return;
     if (await act(() => api("DELETE", `questions/${q.id}/process`), "Attached link removed")) await refresh();
   };
   const toolLine = custom
@@ -817,8 +852,8 @@ function relationsBlock(q, d) {
   let form;
   const kindSel = h(
     "select",
-    { "aria-label": "How this question relates to the other one", onchange: () => form?.relationChanged() },
-    Object.entries(RELATE_AS).map(([v, a]) => h("option", { value: v }, `This question ${a.menu}…`)),
+    { "aria-label": "How this matter relates to the other one", onchange: () => form?.relationChanged() },
+    Object.entries(RELATE_AS).map(([v, a]) => h("option", { value: v }, `This matter ${a.menu}…`)),
   );
   const kindNow = () => kindSel.value || "related";
   const relate = async (x) => {
@@ -835,17 +870,17 @@ function relationsBlock(q, d) {
         ...(q.status === "withdrawn"
           ? []
           : d.related.filter((x) => x.role === "duplicate_of").map((x) =>
-              h("div", { class: "notice rel-hint" }, "This question duplicates “", h("a", { href: `#/q/${x.id}` }, x.title), "”. Withdraw it, so only one stays active? ", h("button", { onclick: withdraw(q.id, `Duplicate of “${x.title}”`) }, "Withdraw this question")),
+              h("div", { class: "notice rel-hint" }, "This matter duplicates “", h("a", { href: `#/q/${x.id}` }, x.title), "”. Withdraw it, so only one stays active? ", h("button", { onclick: withdraw(q.id, `Duplicate of “${x.title}”`) }, "Withdraw this matter")),
             )),
         ...d.related.filter((x) => x.role === "duplicated_by" && x.status !== "withdrawn").map((x) =>
-          h("div", { class: "notice rel-hint" }, "“", h("a", { href: `#/q/${x.id}` }, x.title), "” duplicates this question. Withdraw it, so only one stays active? ", h("button", { onclick: withdraw(x.id, `Duplicate of “${q.title}”`) }, "Withdraw it")),
+          h("div", { class: "notice rel-hint" }, "“", h("a", { href: `#/q/${x.id}` }, x.title), "” duplicates this matter. Withdraw it, so only one stays active? ", h("button", { onclick: withdraw(x.id, `Duplicate of “${q.title}”`) }, "Withdraw it")),
         ),
       ];
-  form = editable ? composer({ relateTo: q.id, exclude: new Set(d.related.map((x) => x.id)), onRelate: relate, kind: kindNow, placeholder: "Type to find a question, or add a new one…" }) : null;
+  form = editable ? composer({ relateTo: q.id, exclude: new Set(d.related.map((x) => x.id)), onRelate: relate, kind: kindNow, placeholder: "Type to find a matter, or add a new one…" }) : null;
   return h(
     "section",
     { class: "panel" },
-    h("h2", null, "Related questions"),
+    h("h2", null, "Related matters"),
     dupHints,
     d.related.length
       ? h(
@@ -859,7 +894,7 @@ function relationsBlock(q, d) {
               h("a", { href: `#/q/${x.id}` }, x.title),
               " ",
               statusPill(x.status),
-              editable ? [" ", h("button", { class: "link muted small", title: "Remove this relation (both questions stay)", onclick: unrelate(x) }, "unlink")] : null,
+              editable ? [" ", h("button", { class: "link muted small", title: "Remove this relation (both matters stay)", onclick: unrelate(x) }, "unlink")] : null,
             ),
           ),
         )
@@ -880,7 +915,7 @@ async function pageRules(sub, params) {
   }
   const updates = (t) => (t.fetch_mode === "auto" ? "everything it can" : t.auto_unavailable ? "kind and title (more needs server setup)" : "kind and page title");
   const used = (u, href) =>
-    u?.questions ? h("a", { href }, `${u.questions} question${u.questions === 1 ? "" : "s"}`, u.in_progress ? ` · ${u.in_progress} in progress` : "") : h("span", { class: "muted" }, "—");
+    u?.questions ? h("a", { href }, `${u.questions} matter${u.questions === 1 ? "" : "s"}`, u.in_progress ? ` · ${u.in_progress} in progress` : "") : h("span", { class: "muted" }, "—");
   const customKinds = S.custom_kinds ?? [];
   return h(
     "div",
@@ -938,37 +973,12 @@ async function pageRules(sub, params) {
         )
       : null,
     statusLabelsPanel(),
-    S.counts.removed ? await removedPanel() : null,
   );
 }
 
 /** The charter. */
 function pageHow() {
   return h("div", null, backToItems(), h("section", { class: "panel charter" }, renderMarkdown(S.space.charter_markdown)));
-}
-
-async function removedPanel() {
-  const { questions } = await api("GET", "questions?removed=only");
-  return h(
-    "section",
-    { class: "panel" },
-    h("h2", null, `Removed questions (${questions.length})`),
-    h("p", { class: "muted" }, "Hidden from lists, kept in the history. Restoring brings a question back as it was."),
-    h(
-      "ul",
-      { class: "rel-list" },
-      questions.map((q) =>
-        h(
-          "li",
-          null,
-          h("a", { href: `#/q/${q.id}` }, q.title),
-          " ",
-          h("span", { class: "muted small" }, "removed ", time(q.removed_at, timeAgo(q.removed_at))),
-          canEdit() ? [" · ", h("button", { class: "link", onclick: async () => (await act(() => api("POST", `questions/${q.id}/restore`), "Restored")) && refresh() }, "Restore")] : null,
-        ),
-      ),
-    ),
-  );
 }
 
 function statusLabelsPanel() {
@@ -1000,7 +1010,7 @@ function statusLabelsPanel() {
           if (r) await refresh();
         },
       },
-      h("p", { class: "muted small" }, "The words your group uses for a status, and the category each one counts as. Offered when setting a status by hand, and for custom processes. Keep at least one “Not started” label: new questions get the first one. Renaming a label doesn't change questions that already use it."),
+      h("p", { class: "muted small" }, "The words your group uses for a status, and the category each one counts as. Offered when setting a status by hand, and for custom processes. Keep at least one “Not started” label: new matters get the first one. Renaming a label doesn't change matters that already use it."),
       ed.el,
       h("div", { class: "row" }, btn, h("button", { type: "button", onclick: () => form.replaceWith(editBtn) }, "Cancel")),
     );
@@ -1011,7 +1021,7 @@ function statusLabelsPanel() {
     "section",
     { class: "panel" },
     h("h2", null, "Statuses"),
-    h("p", { class: "muted" }, "Every question and process is in one of these categories. A question follows its process, or its status is set by hand using these labels (also used for custom processes)."),
+    h("p", { class: "muted" }, "Every matter and process is in one of these categories. A matter follows its process, or its status is set by hand using these labels (also used for custom processes)."),
     h("div", { class: "table-wrap" }, table),
     editBtn,
   );
@@ -1068,7 +1078,7 @@ function toolFormPage({ url, tool }) {
     field("Links accepted", patterns, "One per line: URL pattern → item type. Use :name for one path part and * for anything, e.g. https://forum.example.org/t/* → topic"),
     field("Check a link", tester),
     testOut,
-    h("p", { class: "muted small" }, "From these links, the kind (the item type above) and the page title are retrieved. Their status and dates are typed on each question, with the space's status labels."),
+    h("p", { class: "muted small" }, "From these links, the kind (the item type above) and the page title are retrieved. Their status and dates are typed on each matter, with the space's status labels."),
   );
   const consulBox = h(
     "div",
