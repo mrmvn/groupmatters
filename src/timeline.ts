@@ -18,9 +18,10 @@ export type TimelineItem = {
   start: EffectiveDate;
   /** Absent: not known yet (a running question is drawn up to today; an ended one with an "end unknown" mark). */
   end?: EffectiveDate;
-  /** With `hierarchy=1`: how deep under its parent (0: top), and that parent when it's on the timeline. */
+  /** With `hierarchy=1`: how deep under its parent or original (0: top), and that one when it's on the timeline. */
   depth?: number;
   parent_id?: string;
+  nested_as?: "child" | "duplicate";
 };
 
 export function timeline(ctx: Ctx, space: Space, filters: Record<string, string | undefined>): { items: TimelineItem[]; undated: number } {
@@ -47,7 +48,7 @@ export function timeline(ctx: Ctx, space: Space, filters: Record<string, string 
     const x = lowerBound(a.start.value), y = lowerBound(b.start.value);
     return x < y ? -1 : x > y ? 1 : a.title.localeCompare(b.title);
   });
-  // Children follow their parent, each group still in order of start.
+  // Children follow their parent and duplicates their original, each group still in order of start (related ones stay by date).
   if (filters.hierarchy === "1") items = arrange(items, repo.listRelations(ctx.db, space.id));
   return { items, undated };
 }

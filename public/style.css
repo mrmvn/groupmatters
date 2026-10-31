@@ -130,6 +130,11 @@ legend { font-weight: 600; font-size: .9rem; padding: 0 4px; }
 /* Children sit under their parent, with a discreet branch: a line down the side and a tick to each card. */
 .cards.children { margin: 8px 0 0 12px; padding-left: 16px; border-left: 2px solid var(--line); }
 .cards.children > .node > .card::before { content: ""; position: absolute; left: -18px; top: 22px; width: 16px; border-top: 2px solid var(--line); }
+.cards.children > .node.is-duplicate > .card::before { border-top-style: dashed; }
+.card-tag { font-size: .8rem; font-weight: 600; color: var(--muted); }
+/* Related questions kept together: a dotted line across the gap between their cards. */
+.node.cluster-prev { position: relative; }
+.node.cluster-prev::before { content: ""; position: absolute; left: 22px; top: -10px; height: 10px; border-left: 2px dotted var(--muted); }
 .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .empty { color: var(--muted); padding: 24px 0; text-align: center; }
 

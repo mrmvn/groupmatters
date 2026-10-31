@@ -71,12 +71,13 @@ function toolsView(ctx: Ctx, space: Space, used = usage(ctx, space).tools) {
 /**
  * The list, each question with `links` (what the questions it's related to are to it: parent, child,
  * related, duplicate_of, duplicated_by; removed ones left out). With `hierarchy=1` children follow their
- * parent (`depth`, and `parent_id` when the parent is in the list).
+ * parent and duplicates their original (`depth`, `parent_id`, `nested_as`), and related questions at the
+ * same level are kept together (`cluster`, `cluster_prev`); see relations.ts `arrange`.
  */
 function listView(ctx: Ctx, space: Space, query: Record<string, string | undefined>) {
-  let qs = list(ctx, space, query) as (ReturnType<typeof list>[number] & { depth?: number; parent_id?: string })[];
+  let qs = list(ctx, space, query) as ReturnType<typeof list>[number][];
   const relations = repo.listRelations(ctx.db, space.id);
-  if (query.hierarchy === "1") qs = arrange(qs, relations);
+  if (query.hierarchy === "1") qs = arrange(qs, relations, { cluster: true });
   const byId = new Map(repo.listQuestions(ctx.db, space.id).map((x) => [x.id, x]));
   return qs.map((q) => {
     const links = relations

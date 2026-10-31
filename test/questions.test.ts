@@ -311,6 +311,28 @@ test("arrange: children under their first parent present in the list; a hidden p
   assert.deepEqual(arrange(items.filter((i) => i.id !== "b" && i.id !== "a"), rels).map((i) => [i.id, i.depth]), [["c", 0], ["d", 1], ["e", 0]]);
 });
 
+test("arrange: duplicates nest under their original; related ones are kept together (not on the timeline); no loops from duplicates", () => {
+  const rel = (from: string, to: string, kind: "child_of" | "duplicate" | "related", at = "1") => ({ from_id: from, to_id: to, kind, created_at: at, created_by: "Ana" });
+  const items = ["a", "b", "c", "d", "e"].map((id) => ({ id }));
+  const out = arrange(items, [rel("d", "a", "duplicate"), rel("c", "a", "child_of"), rel("e", "b", "related"), rel("b", "e", "related", "2")], { cluster: true });
+  assert.deepEqual(out.map((i) => [i.id, i.depth, i.nested_as]), [["a", 0, undefined], ["c", 1, "child"], ["d", 1, "duplicate"], ["b", 0, undefined], ["e", 0, undefined]]);
+  assert.deepEqual(out.map((i) => [i.id, i.cluster_prev, i.cluster]).slice(3), [["b", undefined, ["e"]], ["e", true, ["b"]]]);
+  // A group goes where its first member was, members in order; through-chains join.
+  const far = arrange(["a", "x", "b", "y", "c"].map((id) => ({ id })), [rel("a", "b", "related"), rel("b", "c", "related")], { cluster: true });
+  assert.deepEqual(far.map((i) => i.id), ["a", "b", "c", "x", "y"]);
+  assert.deepEqual(far.map((i) => i.cluster_prev), [undefined, true, true, undefined, undefined]);
+  // Without clustering (timeline) the order is kept; related questions at different levels aren't joined.
+  assert.deepEqual(arrange(["a", "x", "b"].map((id) => ({ id })), [rel("a", "b", "related")]).map((i) => i.id), ["a", "x", "b"]);
+  const levels = arrange(["a", "b", "k"].map((id) => ({ id })), [rel("k", "a", "child_of"), rel("b", "k", "related")], { cluster: true });
+  assert.deepEqual(levels.map((i) => [i.id, i.depth, i.cluster]), [["a", 0, undefined], ["k", 1, undefined], ["b", 0, undefined]]);
+  // Duplicates can loop (nothing forbids it): every question still shows, none nested under a descendant.
+  const loop = arrange(["a", "b", "c"].map((id) => ({ id })), [rel("a", "b", "duplicate"), rel("b", "c", "duplicate"), rel("c", "a", "duplicate")]);
+  assert.deepEqual(loop.map((i) => i.id).sort(), ["a", "b", "c"]);
+  assert.equal(loop.filter((i) => i.depth === 0).length, 1);
+  // A child that is also a duplicate stands under its parent.
+  assert.deepEqual(arrange(["a", "b", "c"].map((id) => ({ id })), [rel("c", "b", "duplicate"), rel("c", "a", "child_of")]).find((i) => i.id === "c")?.parent_id, "a");
+});
+
 test("list: presets and sort by latest activity (including the platform's)", async () => {
   const t = makeCtx({ [GH_PR_API]: openPr() });
   const { space } = makeSpace(t.ctx);

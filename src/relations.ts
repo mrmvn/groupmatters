@@ -68,35 +68,85 @@ export function hierarchyLoop(relations: Relation[], childId: string, parentId: 
   return undefined;
 }
 
+export type Arranged<T> = T & {
+  depth: number;
+  /** The question it stands under (a parent, or the original of a duplicate), when that one is in the list. */
+  parent_id?: string;
+  nested_as?: "child" | "duplicate";
+  /** Related questions are kept together: this one follows a related one (same level), and these are the ones in its group. */
+  cluster_prev?: true;
+  cluster?: string[];
+};
+
 /**
- * Put children under their parents. `items` come in the order wanted among siblings (activity, start
- * date…); a question is placed under its first parent (oldest link) that is in `items`, so it appears once.
- * Parents are not shown when filtered out: the child then stands at the top (depth 0, no `parent_id`).
+ * Put questions where their links say. `items` come in the order wanted among siblings (activity,
+ * start date…).
+ * - A child stands under its parent, a duplicate under its original, each only once: under the first of
+ *   them (parents by oldest link, then originals) that is in `items` and doesn't close a loop. When none
+ *   is in `items` (filtered out) the question stands at the top.
+ * - With `cluster`, related questions at the same level are moved next to each other (a group goes where
+ *   its first member was, members in their own order). Left out of the timeline, where order is the date.
  */
-export function arrange<T extends { id: string }>(items: T[], relations: Relation[]): (T & { depth: number; parent_id?: string })[] {
+export function arrange<T extends { id: string }>(items: T[], relations: Relation[], opts: { cluster?: boolean } = {}): Arranged<T>[] {
   const present = new Set(items.map((i) => i.id));
   const parents = parentsMap(relations);
-  const placed = new Map<string, string>(); // child → the parent it stands under
-  for (const i of items) {
-    const p = (parents.get(i.id) ?? []).find((x) => present.has(x));
-    if (p) placed.set(i.id, p);
+  const originals = new Map<string, string[]>(); // a duplicate → what it duplicates
+  const related = new Map<string, Set<string>>();
+  for (const r of relations) {
+    if (r.kind === "duplicate") originals.set(r.from_id, [...(originals.get(r.from_id) ?? []), r.to_id]);
+    if (r.kind === "related") {
+      for (const [x, y] of [[r.from_id, r.to_id], [r.to_id, r.from_id]]) related.set(x, (related.get(x) ?? new Set()).add(y));
+    }
   }
+
+  const placed = new Map<string, { parent: string; as: "child" | "duplicate" }>();
+  // Is `id` the ancestor itself, or somewhere below it, in what's placed so far?
+  const under = (id: string, ancestor: string) => {
+    for (let x: string | undefined = id; x; x = placed.get(x)?.parent) if (x === ancestor) return true;
+    return false;
+  };
+  for (const i of items) {
+    const candidates = [
+      ...(parents.get(i.id) ?? []).map((parent) => ({ parent, as: "child" as const })),
+      ...(originals.get(i.id) ?? []).map((parent) => ({ parent, as: "duplicate" as const })),
+    ];
+    const hit = candidates.find((c) => present.has(c.parent) && !under(c.parent, i.id));
+    if (hit) placed.set(i.id, hit);
+  }
+
   const kids = new Map<string, T[]>();
   for (const i of items) {
-    const p = placed.get(i.id);
+    const p = placed.get(i.id)?.parent;
     if (p) kids.set(p, [...(kids.get(p) ?? []), i]);
   }
-  const out: (T & { depth: number; parent_id?: string })[] = [];
-  const seen = new Set<string>();
-  const visit = (i: T, depth: number) => {
-    if (seen.has(i.id)) return;
-    seen.add(i.id);
-    const parent_id = placed.get(i.id);
-    out.push({ ...i, depth, ...(parent_id ? { parent_id } : {}) });
-    for (const k of kids.get(i.id) ?? []) visit(k, depth + 1);
+
+  const flags = new Map<string, { cluster_prev?: true; cluster?: string[] }>();
+  const group = (list: T[]): T[] => {
+    if (!opts.cluster) return list;
+    const ids = new Set(list.map((i) => i.id));
+    const done = new Set<string>();
+    const out: T[] = [];
+    for (const i of list) {
+      if (done.has(i.id)) continue;
+      // The group: related questions of this level, directly or through each other.
+      const members = new Set([i.id]);
+      for (const id of members) for (const o of related.get(id) ?? []) if (ids.has(o)) members.add(o);
+      const ordered = list.filter((x) => members.has(x.id));
+      ordered.forEach((x, n) => {
+        done.add(x.id);
+        out.push(x);
+        if (ordered.length > 1) flags.set(x.id, { ...(n ? { cluster_prev: true as const } : {}), cluster: ordered.filter((y) => y !== x).map((y) => y.id) });
+      });
+    }
+    return out;
   };
-  for (const i of items) if (!placed.has(i.id)) visit(i, 0);
-  // Only reachable if stored data already loops; never lose an item.
-  for (const i of items) if (!seen.has(i.id)) visit(i, 0);
+
+  const out: Arranged<T>[] = [];
+  const visit = (i: T, depth: number) => {
+    const pl = placed.get(i.id);
+    out.push({ ...i, depth, ...(pl ? { parent_id: pl.parent, nested_as: pl.as } : {}), ...flags.get(i.id) });
+    for (const k of group(kids.get(i.id) ?? [])) visit(k, depth + 1);
+  };
+  for (const i of group(items.filter((x) => !placed.has(x.id)))) visit(i, 0);
   return out;
 }

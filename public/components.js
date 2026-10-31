@@ -47,9 +47,10 @@ export function processChip(q, tools) {
 const LINK_TEXT = { parent: "Child of", child: "Parent of", related: "Related to", duplicate_of: "Duplicate of", duplicated_by: "Duplicated by" };
 const LINK_MARK = { parent: "↳", child: "↱", related: "↔", duplicate_of: "≡", duplicated_by: "≡" };
 
-function cardLinks(q, hierarchy) {
-  // In the hierarchy, the parent it stands under and the children below it are already visible.
-  const shown = (l) => (hierarchy ? !(l.role === "child" || (l.role === "parent" && l.id === q.parent_id)) : true);
+function cardLinks(q, hierarchy, seen) {
+  // In the hierarchy, what the layout already shows isn't written: the question it stands under, the ones nested
+  // below it, the related ones next to it. (Children not in the list aren't mentioned either.)
+  const shown = (l) => (hierarchy ? !(l.role === "child" || seen.has(l.id)) : true);
   const links = (q.links ?? []).filter(shown);
   if (!links.length) return null;
   const roles = Object.keys(LINK_TEXT).filter((r) => links.some((l) => l.role === r));
@@ -69,20 +70,29 @@ function cardLinks(q, hierarchy) {
 }
 
 /**
- * One question as a card. With `children` (cards of the questions below it) they are nested under it,
- * with a discreet branch. `ctx.hierarchy`: the list is arranged by hierarchy (see cardLinks).
+ * One question as a card. With `children` (cards of the questions below it: its children and duplicates)
+ * they are nested under it, with a discreet branch (dashed for a duplicate). Related questions that follow
+ * each other are joined by a dotted line. `kidIds`: the questions nested below. `ctx.hierarchy`: the list
+ * is arranged by hierarchy (see cardLinks).
  */
-export function questionCard(q, ctx, children = []) {
+export function questionCard(q, ctx, children = [], kidIds = []) {
   const { tools, since } = ctx;
+  const seen = new Set([q.parent_id, ...kidIds, ...(q.cluster ?? [])].filter(Boolean));
   const changed = since && q.last_activity_at > since;
   const platformAt = q.process?.fetched?.dates?.updated_at;
   return h(
     "li",
-    { class: "node" },
+    { class: `node${q.nested_as === "duplicate" ? " is-duplicate" : ""}${q.cluster_prev ? " cluster-prev" : ""}` },
     h(
       "div",
       { class: `card${changed ? " is-changed" : ""}` },
-      h("div", { class: "card-head" }, h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title), questionPill(q)),
+      h(
+        "div",
+        { class: "card-head" },
+        h("span", null, q.nested_as === "duplicate" ? h("span", { class: "card-tag", title: "Duplicate of the question above it" }, "≡ duplicate ") : null, h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title)),
+        questionPill(q),
+      ),
+      q.cluster ? h("span", { class: "visually-hidden" }, "Related to the neighbouring question") : null,
       h(
         "div",
         { class: "card-meta" },
@@ -96,7 +106,7 @@ export function questionCard(q, ctx, children = []) {
         " · ",
         platformAt ? ["last activity on the platform ", time(platformAt, timeAgo(platformAt))] : ["last change ", time(q.last_activity_at, timeAgo(q.last_activity_at))],
       ),
-      cardLinks(q, ctx.hierarchy),
+      cardLinks(q, ctx.hierarchy, seen),
       changed ? h("div", { class: "badges" }, h("span", { class: "badge changed" }, "★ Changed since your last visit")) : null,
     ),
     children.length ? h("ul", { class: "cards children" }, children) : null,
@@ -107,7 +117,7 @@ export function questionCard(q, ctx, children = []) {
 export function questionTree(questions, ctx) {
   const kids = new Map();
   for (const q of questions) if (q.parent_id) kids.set(q.parent_id, [...(kids.get(q.parent_id) ?? []), q]);
-  const build = (q) => questionCard(q, ctx, (kids.get(q.id) ?? []).map(build));
+  const build = (q) => questionCard(q, ctx, (kids.get(q.id) ?? []).map(build), (kids.get(q.id) ?? []).map((k) => k.id));
   return questions.filter((q) => !q.parent_id).map(build);
 }
 

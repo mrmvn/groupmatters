@@ -526,22 +526,37 @@ test("hierarchy: children nested under their parent in the list and the timeline
   Q.relate(t.ctx, sp, kid, "Ana", { id: parent.id, kind: "child_of" });
   Q.relate(t.ctx, sp, twin, "Ana", { id: parent.id, kind: "duplicate_of" });
   Q.relate(t.ctx, sp, cousin, "Ana", { id: kid.id, kind: "related" });
+  const pal = await Q.create(t.ctx, sp, "Ana", { title: "Treehouse pal" });
+  const other = await Q.create(t.ctx, sp, "Ana", { title: "Treehouse stranger" });
+  Q.relate(t.ctx, sp, pal, "Ana", { id: cousin.id, kind: "related" });
+  void other;
 
-  // List: the kid is nested in its parent's node, with a branch; apart from that, related/duplicate links are mentioned on the cards.
+  // List: the kid and the duplicate are nested in their parent's node, with a branch (dashed for the duplicate); what the
+  // layout shows isn't written on the cards.
   const main = await go("#/list?q=Treehouse");
-  const nodes = [...main.querySelectorAll(".cards > .node")] as any[];
-  const parentNode = nodes.find((n) => n.querySelector(".card-title").textContent === "Treehouse parent");
-  assert.deepEqual([...parentNode.querySelectorAll(".cards.children > .node > .card .card-title")].map((a: any) => a.textContent), ["Treehouse kid"]);
-  assert.ok(!main.querySelector(".cards > .node > .card .card-links")?.textContent?.includes("Child of"), "no 'child of' where it's nested");
-  const twinCard = nodes.find((n) => n.querySelector(".card-title").textContent === "Treehouse twin");
-  assert.match(twinCard.querySelector(".card-links").textContent, /Duplicate of Treehouse parent/);
-  const kidCard = parentNode.querySelector(".children .card");
-  assert.match(kidCard.querySelector(".card-links").textContent, /Related to Treehouse cousin/);
+  const nodes = ([...main.querySelectorAll(".cards > .node")] as any[]).filter((n) => !n.parentElement.className.includes("children")); // the top level
+  const title = (n: any) => n.querySelector(".card-title").textContent;
+  const parentNode = nodes.find((n) => title(n) === "Treehouse parent");
+  const below = [...parentNode.querySelectorAll(":scope > .cards.children > .node")] as any[];
+  assert.deepEqual(below.map(title).sort(), ["Treehouse kid", "Treehouse twin"]);
+  assert.deepEqual(below.filter((n) => n.className.includes("is-duplicate")).map(title), ["Treehouse twin"]);
+  assert.match(below.find((n) => title(n) === "Treehouse twin").textContent, /≡ duplicate/);
+  assert.ok(!below.some((n) => n.querySelector(".card-links")?.textContent.match(/Duplicate of|Child of/)), "nothing written for what's drawn");
+  assert.ok(!nodes.some((n) => title(n) === "Treehouse twin"), "the duplicate isn't also at the top");
+  // Related questions at the same level are kept together with a dotted line; kid ↔ cousin are on different levels, so that one is written.
+  const roots = nodes.map(title);
+  const [iPal, iCousin] = [roots.indexOf("Treehouse pal"), roots.indexOf("Treehouse cousin")];
+  assert.equal(Math.abs(iPal - iCousin), 1, "kept together");
+  assert.ok(nodes[Math.max(iPal, iCousin)].className.includes("cluster-prev") && !nodes[Math.min(iPal, iCousin)].className.includes("cluster-prev"));
+  assert.ok(!nodes[iCousin].querySelector(".card-links")?.textContent.includes("Treehouse pal"), "not written where it's drawn");
+  assert.match(nodes[iCousin].querySelector(".card-links").textContent, /Related to Treehouse kid/);
+  assert.match(parentNode.querySelector(".children .card-links").textContent, /Related to Treehouse cousin/);
   // Flat on request: nothing nested, parents and children mentioned instead.
   const flat = await go("#/list?q=Treehouse&flat=1");
   assert.equal(flat.querySelectorAll(".cards.children").length, 0);
   assert.match(flat.textContent!, /Child of Treehouse parent/);
   assert.match(flat.textContent!, /Parent of Treehouse kid/);
+  assert.match(flat.textContent!, /Duplicated by Treehouse twin/);
 
   // Question page: every related item with its relation type.
   const page = await go(`#/q/${kid.id}`);
