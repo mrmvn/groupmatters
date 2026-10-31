@@ -92,6 +92,9 @@ function chooseMode() {
   });
 }
 
+/** The token feeds are served under: the view link (never the edit link), if there is one. */
+const subscribeToken = () => (S.role === "view" ? TOKEN : S.view_token);
+
 /** Share dialog (edit link): the view link to hand out widely, and this edit link for those who should change things. */
 function shareDialog() {
   const origin = location.origin;
@@ -111,7 +114,13 @@ function shareDialog() {
     body.replaceChildren(
       h("h2", { id: "share-title" }, "Share this space"),
       S.view_token
-        ? row("View link", "Read only, no name needed. Safe to post for everyone.", `${origin}/s/${S.view_token}`)
+        ? h(
+            "div",
+            null,
+            row("View link", "Read only, no name needed. Safe to post for everyone.", `${origin}/s/${S.view_token}`),
+            row("Atom feed", "For a feed reader. It contains the view link: share with care.", `${origin}/feed/${S.view_token}.atom`),
+            row("Calendar (ICS)", "Start and end dates, as a subscription in a calendar app. Contains the view link too.", `${origin}/feed/${S.view_token}.ics`),
+          )
         : h(
             "div",
             null,
@@ -1358,18 +1367,19 @@ async function pageActivity() {
     backToItems(),
     h("h1", null, "Activity"),
     h("p", { class: "muted" }, "Every change in this space, newest first. The log can't be edited."),
-    S.role === "view"
+    // Feeds are built on the view link, which the edit link also knows (S.view_token): subscribing never uses the edit link.
+    subscribeToken()
       ? h(
           "p",
           null,
           "Subscribe in a feed reader: ",
-          h("a", { href: `/feed/${TOKEN}.atom` }, "Atom feed"),
+          h("a", { href: `/feed/${subscribeToken()}.atom` }, "Atom feed"),
           ". Start and end dates in your calendar app: ",
-          h("a", { href: `/feed/${TOKEN}.ics` }, "calendar (ICS)"),
+          h("a", { href: `/feed/${subscribeToken()}.ics` }, "calendar (ICS)"),
           " (copy the link and add it as a subscription).",
-          h("span", { class: "muted small" }, " Both contain this view link: share with care."),
+          h("span", { class: "muted small" }, " Both contain this space's view link: share with care."),
         )
-      : h("p", { class: "muted small" }, "An Atom feed and a calendar of start and end dates are available from the view link (open the space with it and come back here)."),
+      : h("p", { class: "muted small" }, "An Atom feed and a calendar of start and end dates need this space's view link. Create one from Share… in the menu."),
     h("section", { class: "panel" }, list, more),
   );
 }

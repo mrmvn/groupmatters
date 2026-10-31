@@ -5,6 +5,12 @@ export type Config = {
   host: string;
   dbPath: string;
   publicUrl: string;
+  /** Where this server's source code is (AGPL §13: modified versions must point to their own). Shown in the page footer. */
+  sourceUrl: string;
+  /** Operator's contact address, shown as a mailto link in the footer. Optional. */
+  contactEmail?: string;
+  /** Plain-text description of where this server runs, shown on the privacy page. Optional. */
+  hosting?: string;
   githubToken?: string;
   gitlabToken?: string;
   /** Metaculus requires a token for all API calls; without it Metaculus links are updated by hand. */
@@ -29,6 +35,8 @@ export type Ctx = {
   lookup?: (host: string) => Promise<string[]>;
 };
 
+export const DEFAULT_SOURCE_URL = "https://github.com/mrmvn/groupmatters";
+
 export function loadConfig(env = process.env): Config {
   const port = Number(env.PORT ?? 3000);
   return {
@@ -36,6 +44,9 @@ export function loadConfig(env = process.env): Config {
     host: env.HOST ?? "127.0.0.1",
     dbPath: env.DB_PATH ?? "data/register.sqlite",
     publicUrl: (env.PUBLIC_URL ?? `http://localhost:${port}`).replace(/\/+$/, ""),
+    sourceUrl: /^https?:\/\//i.test(env.SOURCE_URL ?? "") ? env.SOURCE_URL!.trim() : DEFAULT_SOURCE_URL,
+    contactEmail: env.CONTACT_EMAIL?.trim() || undefined,
+    hosting: env.HOSTING?.trim() || undefined,
     githubToken: env.GITHUB_TOKEN || undefined,
     gitlabToken: env.GITLAB_TOKEN || undefined,
     metaculusToken: env.METACULUS_TOKEN || undefined,

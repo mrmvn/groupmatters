@@ -16,6 +16,9 @@ The register is a single Node process with a single SQLite file. It needs no oth
 | `HOST` | `127.0.0.1` | Listen address (use `0.0.0.0` in a container) |
 | `DB_PATH` | `data/register.sqlite` | SQLite file |
 | `PUBLIC_URL` | `http://localhost:$PORT` | Base URL used when printing links and in the Atom and calendar feeds |
+| `SOURCE_URL` | the upstream repository | "Source" link in the footer. If you run a modified version, point it at your own source (AGPL-3.0 §13) |
+| `CONTACT_EMAIL` | — | "Contact" link (mailto) in the footer; hidden when unset. The privacy page tells people to use it |
+| `HOSTING` | — | Optional sentence for the privacy page's "Hosting" section, e.g. where and with whom the server runs |
 | `GITHUB_TOKEN` | — | Optional. Raises GitHub's limit from 60 to 5,000 requests/h. A fine-grained token with **no** permissions is enough for public repos |
 | `GITLAB_TOKEN` | — | Optional, gitlab.com only |
 | `GITLAB_HOSTS` | — | Comma-separated self-hosted GitLab hosts the server may call, e.g. `git.example.org` |
@@ -25,6 +28,8 @@ The register is a single Node process with a single SQLite file. It needs no oth
 | `READ_RATE_LIMIT` | `600` | Reads (API `GET`s) per minute per link |
 | `LOG_REQUESTS` | — | Set to log requests (tokens are redacted) |
 | `NODE_USE_ENV_PROXY` | — | Set to `1` if outbound traffic must go through `HTTPS_PROXY` |
+
+Variables can live in an env file (see `.env.example`, git-ignored as `.env`): `npm start` and `npm run dev` read `.env` when it exists (or `node --env-file=.env src/main.ts`); with Docker the file isn't copied into the image, so use `docker run --env-file .env …`.
 
 ## Run locally
 

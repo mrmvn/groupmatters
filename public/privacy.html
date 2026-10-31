@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Privacy · Group Matters</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <main class="home prose">
+    <p><a href="/">← Group Matters</a></p>
+    <h1>Privacy</h1>
+    <p>Group Matters is free software (AGPL-3.0). Each server is run by an operator, the person or organisation that gave your group its link. That operator is responsible for the data on it and is who to contact (see “Contact” below).</p>
+
+    <h2>What is stored</h2>
+    <ul>
+      <li>What your group enters: matters (titles, notes, dates, status), links to the tools where they're worked on, the tool list and the charter.</li>
+      <li>The <strong>display names</strong> people type. They aren't verified and there are no accounts, so a nickname is fine.</li>
+      <li>An <strong>activity log</strong> of who changed what and when, with those names.</li>
+      <li>Nothing else about you: no email address, no IP address and no device information are stored by the application. (The operator's web server or hosting provider may keep ordinary access logs of its own.)</li>
+    </ul>
+
+    <h2>Who can see it</h2>
+    <p>Anyone who has a space's view or edit link can read everything in it, names and activity log included. Keep the links as private as the content. The Atom feed and the calendar (ICS) of a space contain its view link, so anyone or any service you give them to can read the space too.</p>
+
+    <h2>The activity log is permanent</h2>
+    <p>The log is append-only: the application has no way to edit or delete an entry, and the database refuses it. Matters aren't deleted either, only archived. This is deliberate: a group that records how its questions were answered needs a history it can trust.</p>
+    <p>That doesn't override your rights over your own name. If you want yours replaced (by a placeholder such as “former member”), ask the operator; they do it directly in the database, outside the application.</p>
+
+    <h2>Cookies and browser storage</h2>
+    <p>There are <strong>no cookies</strong>. Your browser keeps a few things on your device so the app works as you left it; none of them is a tracker, and none is sent anywhere except the display name, which goes with each change you make:</p>
+    <ul>
+      <li>your display name;</li>
+      <li>when you last visited, to show “changed since your last visit”;</li>
+      <li>whether you chose to edit or only to view, per space;</li>
+      <li>dashboard preferences (hidden widgets, monthly goal);</li>
+      <li>for the length of a browser tab, the prompt suggestion currently shown.</li>
+    </ul>
+    <p>Clearing this site's data in your browser removes all of it.</p>
+
+    <h2>No trackers</h2>
+    <p>No analytics, no advertising, no third-party scripts, fonts or images. The page's content security policy forbids loading them. Your browser doesn't tell other sites which page you came from.</p>
+
+    <h2>Pages the server fetches</h2>
+    <p>When a matter links to a public page (GitHub, GitLab, Loomio, Polis, Decidim…), the server fetches that page or its public API to show and update its status. Only that URL is requested; none of your names or notes are sent. Some of these requests carry the operator's own API token (never yours).</p>
+
+    <h2>Your rights</h2>
+    <p>You can ask the operator to show you the data that mentions you, to correct it, or to remove it. Anyone with edit access can also download a complete copy of a space as JSON (menu → Export). Your data stays on the server until the operator deletes the space; the operator may keep backups for a limited time.</p>
+
+    <!--HOSTING--><h2>Contact</h2>
+    <p>Use the “Contact” link at the bottom of this page, or ask the group that gave you your link. The source code, including how all of this works, is under “Source”.</p>
+
+    <!-- <p class="muted small">This notice describes what the software does. Each operator can add where the server is hosted; ask them how long backups are kept.</p>-->
+  </main>
+  <!--FOOTER-->
+</body>
+</html>

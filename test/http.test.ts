@@ -383,3 +383,29 @@ test("dashboard: totals, tools, answered questions, weeks, streak, people, miles
   assert.equal(after.totals.questions, 1);
   assert.equal(after.totals.answered, 0);
 });
+
+test("footer: Source and Privacy everywhere; Contact only when configured, escaped; /privacy is served", async () => {
+  const sourceUrl = t.ctx.config.sourceUrl;
+  assert.equal(sourceUrl, "https://github.com/mrmvn/groupmatters");
+  for (const p of ["/", "/privacy", `/s/${editToken}`]) {
+    const r = await fetchLocal(p);
+    assert.equal(r.status, 200, p);
+    const html = await r.text();
+    assert.match(html, /<footer class="site-footer">Group Matters · <a href="https:\/\/github\.com\/mrmvn\/groupmatters"[^>]*>Source<\/a> · <a href="\/privacy">Privacy<\/a><\/footer>/, p);
+    assert.doesNotMatch(html, /mailto:|FOOTER/, p);
+  }
+  assert.doesNotMatch(await (await fetchLocal("/privacy")).text(), /Hosting|HOSTING/);
+  t.ctx.config.hosting = "A VPS in <London>";
+  t.ctx.config.contactEmail = `a"b@example.org`;
+  t.ctx.config.sourceUrl = "https://git.example.org/fork";
+  try {
+    const html = await (await fetchLocal("/privacy")).text();
+    assert.match(html, /href="mailto:a&quot;b@example\.org">Contact<\/a>/);
+    assert.match(html, /href="https:\/\/git\.example\.org\/fork"/);
+    assert.match(html, /<h2>Hosting<\/h2>\s*<p>A VPS in &lt;London&gt;<\/p>/);
+  } finally {
+    t.ctx.config.hosting = undefined;
+    t.ctx.config.contactEmail = undefined;
+    t.ctx.config.sourceUrl = sourceUrl;
+  }
+});

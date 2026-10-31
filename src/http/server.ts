@@ -69,6 +69,31 @@ const errorJson = (e: unknown): Res => {
   return json(500, { error: { code: "internal", message: "Something went wrong on the server" } });
 };
 
+const escHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/** The footer shared by the static pages and the SPA shell: Group Matters · Source · Privacy · Contact (when configured). */
+export function footerHtml(ctx: Ctx): string {
+  const { sourceUrl, contactEmail } = ctx.config;
+  const parts = [
+    "Group Matters",
+    `<a href="${escHtml(sourceUrl)}" target="_blank" rel="noopener">Source</a>`,
+    `<a href="/privacy">Privacy</a>`,
+    contactEmail ? `<a href="mailto:${escHtml(contactEmail)}">Contact</a>` : "",
+  ].filter(Boolean);
+  return `<footer class="site-footer">${parts.join(" · ")}</footer>`;
+}
+
+/** An HTML page from public/ with the footer placed where it says `<!--FOOTER-->`. */
+async function page(ctx: Ctx, rel: string, cache = true): Promise<Res> {
+  const res = await file(rel, cache);
+  const { hosting } = ctx.config;
+  res.body = res.body
+    .toString("utf8")
+    .replace("<!--FOOTER-->", footerHtml(ctx))
+    .replace("<!--HOSTING-->", () => (hosting ? `<h2>Hosting</h2>\n    <p>${escHtml(hosting)}</p>\n\n    ` : ""));
+  return res;
+}
+
 async function file(rel: string, cache = true): Promise<Res> {
   const p = normalize(join(PUBLIC_DIR, rel));
   if (!p.startsWith(PUBLIC_DIR)) throw new HttpError(404, "not_found", "Not found");
@@ -138,13 +163,14 @@ async function routeInner(ctx: Ctx, req: Req): Promise<Res> {
   const { method } = req;
 
   if (method === "GET" && segs[0] === "assets") return file(segs.slice(1).join("/"));
-  if (method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) return file("home.html");
+  if (method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) return page(ctx, "home.html");
+  if (method === "GET" && url.pathname === "/privacy") return page(ctx, "privacy.html");
   if (method === "GET" && url.pathname === "/healthz") return json(200, { ok: true });
 
   // SPA shell, one per space link
   if (method === "GET" && segs[0] === "s" && segs.length === 2) {
     if (!looksLikeToken(segs[1]) || !repo.findSpaceByToken(ctx.db, segs[1])) throw new HttpError(404, "not_found", "Not found");
-    return file("index.html", false);
+    return page(ctx, "index.html", false);
   }
 
   // Atom feed and ICS calendar

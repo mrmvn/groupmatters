@@ -655,3 +655,17 @@ test("hierarchy: children nested under their parent in the list and the timeline
 test("no console errors", () => {
   assert.deepEqual(errors, []);
 });
+
+test("feeds: offered on the edit link's Activity page and in Share…, always under the view link", async () => {
+  const viewToken = repo.getViewToken(t.ctx.db, demo.space.id)!;
+  const main = await go("#/activity");
+  const hrefs = [...main.querySelectorAll('a[href^="/feed/"]')].map((a: any) => a.getAttribute("href"));
+  assert.deepEqual(hrefs, [`/feed/${viewToken}.atom`, `/feed/${viewToken}.ics`]);
+  assert.ok(!main.innerHTML.includes(token), "the edit link never appears in them");
+  (window.HTMLElement.prototype as any).showModal ??= function () {}; // linkedom has no <dialog> behaviour
+  [...document.querySelectorAll("header .menu .menu-list > *")].find((b: any) => b.textContent === "Share…")!.click();
+  await settle();
+  const values = [...document.querySelectorAll("dialog input")].map((i: any) => i.getAttribute("value"));
+  assert.ok(values.some((v: string) => v.endsWith(`/feed/${viewToken}.atom`)) && values.some((v: string) => v.endsWith(`/feed/${viewToken}.ics`)));
+  document.querySelector("dialog")!.remove();
+});

@@ -54,8 +54,10 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monosp
 .skip { position: absolute; left: -999px; }
 .skip:focus { left: 8px; top: 8px; background: var(--panel); padding: 8px; z-index: 10; }
 .loading { padding: 2rem; color: var(--muted); }
+.site-footer { max-width: 920px; margin: 0 auto; padding: 16px 12px 32px; text-align: center; font-size: .85rem; color: var(--muted); }
+.site-footer a { color: inherit; }
 
-#app { max-width: 920px; margin: 0 auto; padding: 0 12px 64px; }
+#app { max-width: 920px; margin: 0 auto; padding: 0 12px 24px; }
 main { display: block; }
 .home { max-width: 640px; margin: 10vh auto; padding: 0 16px; }
 
@@ -436,3 +438,9 @@ a.tile:hover { border-color: var(--muted); }
 .ico-timeline i:nth-child(3) { width: 50%; margin-left: 50%; }
 .more-btn { min-width: 36px; justify-content: center; font-size: 1.2rem; line-height: 1; }
 .row .menu { margin-left: auto; position: relative; }
+
+/* Long-form static pages (privacy) */
+.prose { margin-top: 5vh; }
+.prose h2 { margin-top: 1.6rem; }
+.prose ul { padding-left: 1.2rem; }
+.prose li { margin: .35rem 0; }
