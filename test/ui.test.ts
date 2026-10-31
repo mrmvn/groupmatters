@@ -127,9 +127,47 @@ test("items page: a list/timeline toggle (list selected by default) keeps the fi
   assert.ok(tl.querySelector(".view-btn.current .ico-timeline"), "timeline selected");
   assert.ok(tl.querySelector("#composer-input"), "the add bar is on both views");
   assert.equal(tl.querySelector(".view-toggle a")!.getAttribute("href"), "#/list?lane=ended");
-  // Shortcuts are in the filters; Withdrawn is a status.
-  assert.ok(main.querySelector(".filters .presets"));
+  // No shortcut buttons any more; Withdrawn is a status.
+  assert.ok(!main.querySelector(".presets"));
   assert.equal(main.querySelectorAll(".sublane").length, 3);
+});
+
+test("items page: All shows its count; filters take several values; view symbols sit left of the search", async () => {
+  const main = await go("#/list?lane=current");
+  const all = [...main.querySelectorAll(".sublane")].find((a: any) => /^All/.test(a.textContent)) as any;
+  const total = repo.listQuestions(t.ctx.db, demo.space.id).length;
+  assert.equal(all.textContent, `All (${total})`);
+  const toolbar = main.querySelector(".toolbar")!;
+  assert.deepEqual([...toolbar.children].map((c: any) => c.className.split(" ")[0]), ["view-toggle", "search", "sublanes"], "toggle, then search, then lanes");
+  // Status, tool, item type and process state are dropdowns of boxes that can be ticked together.
+  const btnText = (m: any) => [...m.querySelectorAll(".dd-btn")].map((b: any) => b.textContent.replace("▾", ""));
+  assert.deepEqual(btnText(main), ["Status", "Tool", "Item type", "Process state"]);
+  assert.equal(main.querySelectorAll("select").length, 2, "only Order and Children are single selects now");
+  assert.ok(![...main.querySelectorAll(".field .label")].some((l: any) => /Status is|Has a process/.test(l.textContent)), "no 'Status is' or 'Has a process' filter");
+  const toolBox = main.querySelector("#dd-tool") as any;
+  assert.ok(toolBox.hidden, "closed at first");
+  assert.equal(toolBox.querySelector("label")!.textContent, "No tool", "No tool comes first");
+  (main.querySelector(".dd-btn[aria-controls=dd-tool]") as any).click();
+  assert.ok(!toolBox.hidden);
+  const filtered = await go("#/list?lane=all&status=open,accepted&tool=github,loomio");
+  assert.deepEqual(btnText(filtered).slice(0, 2), ["Status: In progress, Accepted", "Tool: GitHub, Loomio"]);
+  const ticked = (id: string) => [...filtered.querySelectorAll(`#${id} input`)].filter((i: any) => i.checked).map((i: any) => i.parentElement.textContent);
+  assert.deepEqual(ticked("dd-status"), ["In progress", "Accepted"]);
+  assert.deepEqual(ticked("dd-tool"), ["GitHub", "Loomio"]);
+  const cards = [...filtered.querySelectorAll(".card")] as any[];
+  assert.ok(cards.length > 0);
+  assert.ok(cards.every((c) => /GitHub|Loomio/.test(c.querySelector(".chip-tool")?.textContent ?? "")), "only those tools");
+  // Ticking another box adds it to the list.
+  const polis = filtered.querySelector("#dd-tool-polis") as any;
+  polis.checked = true;
+  polis.dispatchEvent(new window.Event("change"));
+  assert.match(window.location.hash, /tool=github%2Cloomio%2Cpolis/);
+  // "No tool" finds the matters without a process.
+  const none = await go("#/list?lane=all&tool=none");
+  const noProcess = repo.listQuestions(t.ctx.db, demo.space.id).filter((q) => !q.process).length;
+  assert.ok(noProcess > 0);
+  assert.equal(none.querySelectorAll(".card").length, noProcess);
+  assert.equal(btnText(none)[1], "Tool: No tool");
 });
 
 test("dashboard renders its widgets; hiding one is remembered and can be undone", async () => {
@@ -137,7 +175,7 @@ test("dashboard renders its widgets; hiding one is remembered and can be undone"
   const titles = [...main.querySelectorAll(".widget h2")].map((x: any) => x.textContent);
   for (const w of ["At a glance", "Top tools used", "Matters by status", "Needs attention", "Momentum, last 12 weeks"]) assert.ok(titles.includes(w), w);
   for (const w of ["Activity", "Who's active", "Monthly goal", "Your impact", "Milestones"]) assert.ok(!titles.includes(w), `${w} was removed`);
-  assert.ok([...main.querySelectorAll(".widget")].every((el: any) => /\bc[124]\b/.test(el.className)), "every widget declares how many columns it spans");
+  assert.ok([...main.querySelectorAll(".widget")].every((el: any) => /\bc[1-4]\b/.test(el.className)), "every widget declares how many columns it spans");
   assert.ok(main.querySelector('.widget a[href="#/list?lane=all&tool=custom"]'), "tools link to the filtered list");
   assert.doesNotMatch(main.textContent!, /🔥|#\d+ of \d+ active/, "no streak or individual rank");
   (main.querySelector(".widget-hide") as any).click();
@@ -151,9 +189,13 @@ test("dashboard renders its widgets; hiding one is remembered and can be undone"
   assert.equal(JSON.parse(store.get("qr:dash:hidden")!).length, 0);
 });
 
-test("search, presets and filters render", async () => {
+test("search, dashboard shortcuts and filters render", async () => {
   assert.match((await go("#/list?q=newcomers")).textContent!, /newcomers/);
-  for (const p of ["no_process", "quiet", "fetch_problems"]) await go(`#/list?preset=${p}`);
+  for (const p of ["no_process", "quiet", "fetch_problems"]) {
+    const page = await go(`#/list?preset=${p}`);
+    assert.match(page.textContent!, /Showing .* · clear/, "a shortcut from the dashboard says what it shows");
+  }
+  assert.equal(document.title, `${demo.space.name} · Group Matters`, "the matters page: just the space and the product");
   await go("#/list?lane=all&status=accepted&source=process&tool=custom&sort=created");
 });
 
@@ -415,15 +457,15 @@ test("flow: pasting an already tracked link shows the existing question", async 
   assert.match(notice.textContent, /already tracked by Should CI use the newer upload-artifact action\?/);
 });
 
-test("flow: a question is removed from its ⋯ menu and restored from the Removed lane", async () => {
+test("flow: a question is archived from its ⋯ menu and restored from the Archived lane", async () => {
   const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title.startsWith("Should we print t-shirts"))!;
   const page = await go(`#/q/${q.id}`);
   assert.deepEqual(buttons("Edit"), []);
   assert.equal(page.textContent!.includes("null"), false);
-  // Remove… is behind the ⋯ menu.
+  // Archive… is behind the ⋯ menu.
   const more = page.querySelector(".more-btn") as any;
   assert.ok(more, "⋯ button");
-  assert.equal(buttons("Remove…").length, 1);
+  assert.equal(buttons("Archive…").length, 1);
   assert.ok(more.closest(".menu").querySelector(".menu-list").hidden, "closed at first");
   // @ts-ignore (browser module)
   await (await import("../public/api.js")).api("POST", `questions/${q.id}/remove`, {});
@@ -434,10 +476,11 @@ test("flow: a question is removed from its ⋯ menu and restored from the Remove
   await submitAndSettle(ed);
   await go(`#/q/${q.id}`);
   assert.ok(repo.getQuestion(t.ctx.db, demo.space.id, q.id)!.removed_at);
-  assert.match(document.querySelector("main")!.textContent!, /Removed/);
+  assert.match(document.querySelector("main")!.textContent!, /Archived/);
   assert.doesNotMatch((await go("#/rules")).textContent!, /Removed questions/, "no longer on the Tools page");
-  const removed = await go("#/list?lane=removed");
-  assert.match(document.querySelector("main .sublanes")!.textContent!, /Removed \(1\)/);
+  const removed = await go("#/list?lane=archived");
+  assert.match(document.querySelector("main .sublanes")!.textContent!, /Archived \(1\)/);
+  assert.match((await go("#/list?lane=removed")).querySelector(".sublane.current")!.textContent!, /Archived/, "the old lane name still works");
   assert.match(removed.textContent!, /Should we print t-shirts/);
   await go(`#/q/${q.id}`);
   buttons("Restore")[0].dispatchEvent(new window.Event("click"));

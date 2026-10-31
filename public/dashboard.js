@@ -42,9 +42,10 @@ const empty = (text) => h("p", { class: "muted" }, text);
 
 // ---------------------------------------------------------------- widgets
 // Each: { id, title, why (what it's for: shown in the chooser), cols, build(d, ctx) → Node }
-// `cols` is how many of the grid's 4 columns the widget spans (1, 2 or 4). Row heights follow the
-// content (see .dash-grid in style.css), so widgets fill in reading order and every row is as tall
-// as its tallest member: nothing is clipped, and hidden widgets leave gaps that later ones fill
+// `cols` is how many of the grid's 4 columns the widget spans (1 to 4). Row heights follow the content
+// (see .dash-grid in style.css): every row is as tall as its tallest widget and the others stretch to match,
+// so the widgets are ordered to share a row with ones of a similar height (short numbers together, the longer
+// lists side by side). Nothing is clipped, and hidden widgets leave gaps that later ones fill
 // (grid-auto-flow: dense). On narrower screens the grid drops to 2 then 1 column.
 
 const WIDGETS = [
@@ -68,7 +69,7 @@ const WIDGETS = [
     id: "glance",
     title: "At a glance",
     why: "Headline numbers, linked to the list",
-    cols: 2,
+    cols: 3,
     build: (d) => {
       const tile = (n, label, href) => h("a", { class: "tile", href }, h("span", { class: "big" }, n), h("span", { class: "muted small" }, label));
       const s = d.by_status;
@@ -117,7 +118,7 @@ const WIDGETS = [
     build: (d) => {
       const top = d.tools.slice(0, 5);
       const rows = top.map((t) => ({ label: t.name, n: t.questions, href: `#/list?lane=all&tool=${t.custom ? "custom" : t.id}`, note: t.custom ? "(custom)" : t.in_progress ? `· ${t.in_progress} in progress` : "" }));
-      if (d.totals.without_process) rows.push({ label: "No process", n: d.totals.without_process, href: "#/list?lane=all&has_process=no", cls: "muted-fill" });
+      if (d.totals.without_process) rows.push({ label: "No process", n: d.totals.without_process, href: "#/list?lane=all&tool=none", cls: "muted-fill" });
       const pct = d.totals.questions ? Math.round((d.totals.with_process / d.totals.questions) * 100) : 0;
       return h(
         "div",
@@ -137,6 +138,28 @@ const WIDGETS = [
     build: (d) => {
       const rows = d.item_types.slice(0, 6).map((k) => ({ label: k.kind === "none" ? "No kind" : itemLabel(k.kind), n: k.questions, href: k.kind === "none" ? null : `#/list?lane=all&item_type=${encodeURIComponent(k.kind)}`, cls: k.kind === "none" ? "muted-fill" : "" }));
       return rows.length ? barRows(rows) : empty("No matters yet.");
+    },
+  },
+  {
+    id: "attention",
+    title: "Needs attention",
+    why: "Where a nudge would help most",
+    cols: 1,
+    build: (d) => {
+      const a = d.attention;
+      const item = (n, text, href) => h("li", { class: n ? "todo" : "ok" }, h("span", { "aria-hidden": "true" }, n ? "● " : "✓ "), n ? [h("a", { href }, plural(n, "matter")), ` ${text}`] : `None ${text}`);
+      return h(
+        "div",
+        null,
+        h(
+          "ul",
+          { class: "checks" },
+          item(a.quiet, "in progress but quiet for 30+ days", "#/list?preset=quiet"),
+          item(a.no_process, "current without a process yet", "#/list?preset=no_process"),
+          item(a.fetch_problems, "with a problem retrieving from their link", "#/list?preset=fetch_problems"),
+        ),
+        a.oldest_open ? h("p", { class: "muted small" }, "Longest-waiting: ", h("a", { href: `#/q/${a.oldest_open.id}` }, a.oldest_open.title), ` (${plural(a.oldest_open.days, "day")})`) : null,
+      );
     },
   },
   {
@@ -176,28 +199,6 @@ const WIDGETS = [
           { class: "small" },
           d.days_to_answer !== null ? h("span", { class: "muted" }, `Typical time to answer: ${d.days_to_answer < 1 ? "under a day" : `${d.days_to_answer} days`}`) : null,
         ),
-      );
-    },
-  },
-  {
-    id: "attention",
-    title: "Needs attention",
-    why: "Where a nudge would help most",
-    cols: 1,
-    build: (d) => {
-      const a = d.attention;
-      const item = (n, text, href) => h("li", { class: n ? "todo" : "ok" }, h("span", { "aria-hidden": "true" }, n ? "● " : "✓ "), n ? [h("a", { href }, plural(n, "matter")), ` ${text}`] : `None ${text}`);
-      return h(
-        "div",
-        null,
-        h(
-          "ul",
-          { class: "checks" },
-          item(a.quiet, "in progress but quiet for 30+ days", "#/list?preset=quiet"),
-          item(a.no_process, "current without a process yet", "#/list?preset=no_process"),
-          item(a.fetch_problems, "with a problem retrieving from their link", "#/list?preset=fetch_problems"),
-        ),
-        a.oldest_open ? h("p", { class: "muted small" }, "Longest-waiting: ", h("a", { href: `#/q/${a.oldest_open.id}` }, a.oldest_open.title), ` (${plural(a.oldest_open.days, "day")})`) : null,
       );
     },
   },

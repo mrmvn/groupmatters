@@ -112,15 +112,12 @@ legend { font-weight: 600; font-size: .9rem; padding: 0 4px; }
 .search-btn { padding: 8px 12px; }
 @media (max-width: 560px) {
   .toolbar { gap: 8px; }
-  .search { flex: 0 0 auto; max-width: 100%; }
-  .search:focus-within { flex: 1 1 100%; order: -2; }
-  /* one row: lanes on the left, then the search icon and the view toggle */
-  .toolbar .sublanes { order: -1; flex: 1 1 0; flex-basis: 0; min-width: 0; gap: 4px; }
-  .toolbar .sublane { padding: 4px 9px; font-size: .85rem; }
-  .search-btn { padding: 8px 10px; }
+  /* the view toggle and the search field share the first row, the lanes take the next one (as on wider screens) */
+  .search { flex: 1 1 0; min-width: 0; }
   .search input { width: 100%; min-width: 0; }
-  /* collapsed: only the magnifier, until tapped or while a query is typed */
-  .search:not(:focus-within) input:placeholder-shown { width: 0; padding: 0; border: 0; margin: 0 -6px 0 0; opacity: 0; }
+  .search-btn { padding: 8px 10px; }
+  .toolbar .sublanes { gap: 4px; }
+  .toolbar .sublane { padding: 4px 9px; font-size: .85rem; }
 }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-btn { border-radius: 999px; padding: 4px 12px; min-height: 34px; font-size: .88rem; }
@@ -128,7 +125,23 @@ legend { font-weight: 600; font-size: .9rem; padding: 0 4px; }
 .chip-btn.on::before { content: "✓ "; }
 .filters { margin: 0 0 12px; }
 .filters summary { cursor: pointer; color: var(--muted); padding: 4px 0; }
-.filter-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; }
+/* Multi-select filters: a button per filter that opens a list of boxes */
+.dd-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 10px; }
+/* Order and Children share the line with the dropdowns (and wrap with them): label and select side by side */
+.dd-row .field { display: flex; align-items: center; gap: 6px; margin: 0 0 0 6px; }
+.dd-row .field .label { margin: 0; font-weight: 400; font-size: .88rem; color: var(--muted); white-space: nowrap; }
+.dd-row .field select { width: auto; min-height: 34px; padding: 3px 8px; font-size: .88rem; }
+.dd { position: relative; }
+.dd-btn { gap: 6px; max-width: 100%; }
+.dd-btn.on::before { content: none; }
+.dd-btn.on { background: var(--bg); color: var(--ink); border-color: var(--accent); border-width: 2px; padding: 3px 11px; font-weight: 600; }
+.dd-caret { font-size: .8em; opacity: .7; }
+.dd-panel { position: absolute; left: 0; top: calc(100% + 4px); z-index: 8; min-width: 13rem; max-width: min(22rem, calc(100vw - 24px)); max-height: 60vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,.15); padding: 4px; }
+.dd-panel[hidden] { display: none; }
+.dd-opt { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: .95rem; }
+.dd-opt:hover { background: var(--bg); }
+.dd-opt input { width: 1.05rem; height: 1.05rem; margin: 0; accent-color: var(--accent); }
+.dd-panel > .link { margin: 4px 10px 6px; }
 
 /* cards */
 .cards { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
@@ -307,7 +320,6 @@ button.edit-field { margin-left: 4px; font-size: .9rem; min-width: 24px; min-hei
 
 /* Lanes under the List / Timeline tabs */
 .sublanes { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
-.filters > .presets { margin: 4px 0 10px; }
 .sublane { padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; color: var(--muted); font-size: .9rem; white-space: nowrap; }
 .sublane:hover { border-color: var(--muted); }
 .sublane.current { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600; }
@@ -323,14 +335,14 @@ button.edit-field { margin-left: 4px; font-size: .9rem; min-width: 24px; min-hei
 .widget { margin: 0; display: flex; flex-direction: column; min-height: 0; }
 .widget[hidden] { display: none; }
 .widget-body { flex: 1; min-width: 0; }
-.c1 { grid-column: span 1; } .c2 { grid-column: span 2; } .c4 { grid-column: span 4; }
+.c1 { grid-column: span 1; } .c2 { grid-column: span 2; } .c3 { grid-column: span 3; } .c4 { grid-column: span 4; }
 @media (max-width: 1024px) {
   .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .c1, .c2 { grid-column: span 1; } .c4 { grid-column: span 2; }
+  .c1 { grid-column: span 1; } .c2, .c3, .c4 { grid-column: span 2; }
 }
 @media (max-width: 640px) {
   .dash-grid { grid-template-columns: minmax(0, 1fr); }
-  .c1, .c2, .c4 { grid-column: 1 / -1; }
+  .c1, .c2, .c3, .c4 { grid-column: 1 / -1; }
 }
 .widget-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
 .widget-head h2 { margin: 0; }
@@ -407,13 +419,18 @@ a.tile:hover { border-color: var(--muted); }
 .menu-list a, .menu-list button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 12px; min-height: 0; border-radius: 6px; color: var(--ink); text-decoration: none; font: inherit; font-size: .95rem; cursor: pointer; }
 .menu-list a:hover, .menu-list button:hover, .menu-list a:focus-visible, .menu-list button:focus-visible { background: var(--bg); }
 .menu-list a[aria-current] { font-weight: 600; }
-.view-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.view-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 36px; color: var(--muted); background: var(--panel); text-decoration: none; }
+.view-toggle { display: inline-flex; flex: none; align-self: stretch; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.view-btn { display: inline-flex; align-items: center; justify-content: center; width: 42px; min-height: 40px; color: var(--muted); background: var(--panel); text-decoration: none; }
 .view-btn + .view-btn { border-left: 1px solid var(--line); }
 .view-btn:hover { color: var(--ink); }
 .view-btn.current { background: var(--ink); color: var(--bg); }
-.ico { display: inline-flex; flex-direction: column; gap: 3px; width: 18px; }
-.ico i { display: block; height: 3px; border-radius: 1px; background: currentColor; }
+/* The two view symbols share one 18×15 box and three 3px rows, so they weigh the same and neither looks like the burger:
+   the list is a bulleted one (dot + line), the timeline three bars shifted along the time axis. */
+.ico { display: grid; grid-template-rows: repeat(3, 3px); gap: 3px; width: 18px; height: 15px; }
+.ico i { display: block; position: relative; height: 3px; border-radius: 1px; }
+.ico-list i::before { content: ""; position: absolute; left: 0; top: 0; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+.ico-list i::after { content: ""; position: absolute; left: 6px; right: 0; top: 0; height: 3px; border-radius: 1px; background: currentColor; }
+.ico-timeline i { background: currentColor; }
 .ico-timeline i:nth-child(1) { width: 60%; margin-left: 0; }
 .ico-timeline i:nth-child(2) { width: 60%; margin-left: 30%; }
 .ico-timeline i:nth-child(3) { width: 50%; margin-left: 50%; }

@@ -101,6 +101,25 @@ test("timeline: only questions with a start date, sorted by start; same filters 
   assert.deepEqual(timeline(ctx, space, { item_type: "Meeting" }).items.map((i) => i.id), [b.id], "filter by typed kind");
 });
 
+test("timeline: no start date but an end still to come → drawn as if it started now; a past end stays undated", async () => {
+  const { ctx } = makeCtx();
+  const { space } = makeSpace(ctx); // the clock stands at 2026-01-10T12:00:00Z
+  const soon = await Q.create(ctx, space, "Ana", { title: "Closes soon" });
+  const today = await Q.create(ctx, space, "Ana", { title: "Closes today" });
+  const past = await Q.create(ctx, space, "Ana", { title: "Closed already" });
+  await Q.create(ctx, space, "Ana", { title: "No dates at all" });
+  Q.updateFields(ctx, space, soon, "Ana", { set: { end: "2026-02-01" } });
+  Q.updateFields(ctx, space, today, "Ana", { set: { end: "2026-01-10" } });
+  Q.updateFields(ctx, space, past, "Ana", { set: { end: "2026-01-09" } });
+  const { items, undated } = timeline(ctx, space, {});
+  assert.deepEqual(items.map((i) => i.title).sort(), ["Closes soon", "Closes today"], "a whole day still running counts as to come");
+  assert.deepEqual(items.find((i) => i.id === soon.id)!.start, { value: "2026-01-10T12:00:00.000Z", source: "assumed" });
+  assert.equal(undated, 2);
+  // A real start date wins.
+  Q.updateFields(ctx, space, Q.load(ctx, space, soon.id), "Ana", { set: { start: "2026-01-02" } });
+  assert.deepEqual(timeline(ctx, space, {}).items.find((i) => i.id === soon.id)!.start, { value: "2026-01-02", source: "typed" });
+});
+
 test("migration 8: sources become typed values; hand-set process states become typed statuses; tool states dropped", () => {
   const dir = mkdtempSync(join(process.cwd(), ".test-db-"));
   try {

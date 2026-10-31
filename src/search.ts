@@ -41,9 +41,11 @@ export function list(ctx: Ctx, space: Space, f: Record<string, string | undefine
   const source = f.source === "process" ? "retrieved" : f.source === "manual" ? "typed" : f.source;
   if (source) qs = qs.filter((q) => q.fields.status.source === source);
   const tools = multi(f.tool);
-  if (tools) qs = qs.filter((q) => q.process && tools.includes(q.process.tool_id));
+  // `none` stands for the questions with no process, so no tool.
+  if (tools) qs = qs.filter((q) => (q.process ? tools.includes(q.process.tool_id) : tools.includes("none")));
   // The kind in use: typed, or the item type the tool gives.
-  if (f.item_type) qs = qs.filter((q) => q.process && q.fields.kind.value === f.item_type);
+  const itemTypes = multi(f.item_type);
+  if (itemTypes) qs = qs.filter((q) => q.process && itemTypes.includes(q.fields.kind.value as string));
   const states = multi(f.state);
   if (states) qs = qs.filter((q) => q.process?.fetched && states.includes(q.process.fetched.state));
   if (f.has_process === "yes") qs = qs.filter((q) => !!q.process);

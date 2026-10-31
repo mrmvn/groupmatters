@@ -45,10 +45,12 @@ const days = (ms) => {
 
 const ENDED = ["accepted", "rejected", "concluded", "withdrawn"];
 const SOURCE = { retrieved: "retrieved", typed: "typed" };
+/** No start date is known, but the end is still to come: the server hands the item over as starting now. */
+const assumed = (it) => it.start.source === "assumed";
 
 /** Start and end in ms, and how the bar is drawn. Whole days run from midnight to midnight (local). */
 export function layout(it, now) {
-  const start = dateStart(it.start.value);
+  const start = assumed(it) ? now : dateStart(it.start.value);
   const end = it.end ? Math.max(dateEnd(it.end.value), start) : undefined;
   if (end !== undefined) return { start, end, kind: end <= now ? "done" : start >= now ? "scheduled" : "planned" };
   if (ENDED.includes(it.status)) return { start, kind: "unknown_end" };
@@ -59,7 +61,7 @@ export function layout(it, now) {
 export function describe(it, now) {
   const label = it.status_label && it.status_label !== STATE[it.status] ? `${it.status_label} (${STATE[it.status]})` : STATE[it.status];
   const l = layout(it, now);
-  const parts = [label, `${l.start > now ? "starts" : "from"} ${fmtWhen(it.start.value)} (${SOURCE[it.start.source]})`];
+  const parts = [label, assumed(it) ? "no start date, drawn from today" : `${l.start > now ? "starts" : "from"} ${fmtWhen(it.start.value)} (${SOURCE[it.start.source]})`];
   if (it.end) parts.push(`${l.kind === "done" ? "to" : "until"} ${fmtWhen(it.end.value)}${l.kind === "done" ? "" : ", planned"} (${SOURCE[it.end.source]}), ${days(l.end - l.start)}`);
   else if (l.kind === "unknown_end") parts.push("end date unknown");
   else if (l.kind === "running") parts.push(`still running, ${days(now - l.start)} so far`);

@@ -1,10 +1,12 @@
 // Timeline: the questions that have a start date, from their start to their end (see fields.ts).
-// Same filters as the list. Questions without a start date aren't drawn.
+// Same filters as the list. Questions without a start date aren't drawn, except those with a planned end in the
+// future: they are drawn as if they started now (`start.source: "assumed"`).
 import type { Ctx } from "./ctx.ts";
 import type { QuestionState, Space } from "./types.ts";
-import { effectiveDates, lowerBound } from "./fields.ts";
+import { effectiveDates, lowerBound, upperBound } from "./fields.ts";
 
-type EffectiveDate = { value: string; source: "typed" | "retrieved" };
+/** `assumed`: no start date is known, the question is drawn from now (see `timeline`). */
+type EffectiveDate = { value: string; source: "typed" | "retrieved" | "assumed" };
 import { list } from "./search.ts";
 import { arrange } from "./relations.ts";
 import * as repo from "./repo.ts";
@@ -27,8 +29,12 @@ export type TimelineItem = {
 export function timeline(ctx: Ctx, space: Space, filters: Record<string, string | undefined>): { items: TimelineItem[]; undated: number } {
   let items: TimelineItem[] = [];
   let undated = 0;
+  const now = ctx.now().toISOString();
   for (const q of list(ctx, space, filters)) {
-    const { start, end } = effectiveDates(q);
+    const dates = effectiveDates(q);
+    const { end } = dates;
+    // No start date, but an end still to come: shown as if it started now.
+    const start: EffectiveDate | undefined = dates.start ?? (end && upperBound(end.value) > now ? { value: now, source: "assumed" } : undefined);
     if (!start) {
       undated++;
       continue;

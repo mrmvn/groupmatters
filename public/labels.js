@@ -59,7 +59,7 @@ export const ACTION = {
   "question.created": "added the matter",
   "question.edited": "edited the matter",
   "question.status_changed": "changed the status",
-  "question.removed": "removed the matter",
+  "question.removed": "archived the matter",
   "question.restored": "restored the matter",
   "process.attached": "linked a process",
   "process.replaced": "replaced the process",

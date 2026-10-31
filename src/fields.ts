@@ -36,7 +36,7 @@ export function parseDateValue(v: unknown, label = "date"): DateValue {
 
 /** Earliest / latest moment a value can mean (a whole day spans 24 h; time zones are ignored for this check). */
 export const lowerBound = (v: DateValue) => (isDay(v) ? `${v}T00:00:00.000Z` : v);
-const upperBound = (v: DateValue) => (isDay(v) ? `${v}T23:59:59.999Z` : v);
+export const upperBound = (v: DateValue) => (isDay(v) ? `${v}T23:59:59.999Z` : v);
 
 // ---------- retrieved values ----------
 

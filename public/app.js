@@ -20,7 +20,7 @@ import { promptOfSession } from "./prompts.js";
 const app = document.getElementById("app");
 const S = { space: null, role: "view", tools: [], counts: {}, since: null };
 const canEdit = () => S.role === "edit";
-/** Removed questions are read-only until restored. */
+/** Archived (API: removed) questions are read-only until restored. */
 const canEditQ = (q) => canEdit() && !q.removed_at;
 
 // ---------------------------------------------------------------- bootstrap
@@ -45,12 +45,17 @@ async function boot() {
   if (canEdit()) installLinkDrop();
   window.addEventListener("hashchange", render);
   // The menu closes on a click elsewhere, or Escape.
-  document.addEventListener("click", (e) => !e.target.closest?.(".menu") && closeMenus());
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest?.(".menu")) closeMenus();
+    if (!e.target.closest?.(".dd")) closeFilters();
+  });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     const open = document.querySelector(".menu-list:not([hidden])");
+    const dd = document.querySelector(".dd-panel:not([hidden])")?.parentElement;
     closeMenus();
-    open?.parentElement.querySelector(".menu-btn").focus();
+    closeFilters();
+    (open?.parentElement.querySelector(".menu-btn") ?? dd?.querySelector(".dd-btn"))?.focus();
   });
   render();
 }
@@ -208,7 +213,8 @@ async function render() {
   lastPageKey = pageKey;
   app.replaceChildren(header(parts[0] ?? "list"), h("main", { id: "main" }, view));
   const heading = pageHeading(parts, view);
-  document.title = `${heading.textContent} · ${S.space.name} · Group Matters`;
+  // The matters page is the home page of the space: its tab is just "<Space> · Group Matters".
+  document.title = !parts[0] || parts[0] === "list" ? `${S.space.name} · Group Matters` : `${heading.textContent} · ${S.space.name} · Group Matters`;
   if (keep) restoreFocus(keep);
   else if (!firstLoad) {
     heading.tabIndex = -1;
@@ -243,7 +249,6 @@ function header(section) {
     {
       type: "button",
       class: "menu-btn",
-      "aria-label": "Menu",
       "aria-expanded": "false",
       onclick: () => {
         const wasClosed = list.hidden;
@@ -252,6 +257,7 @@ function header(section) {
       },
     },
     h("span", { class: "burger", "aria-hidden": "true" }, h("i"), h("i"), h("i")),
+    "Menu",
   );
   return h(
     "header",
@@ -269,6 +275,15 @@ function header(section) {
       ),
     ),
   );
+}
+
+/** Close the open filter dropdown, if any. */
+function closeFilters() {
+  openFilter = null;
+  for (const d of document.querySelectorAll(".dd")) {
+    d.querySelector(".dd-panel").hidden = true;
+    d.querySelector(".dd-btn").setAttribute("aria-expanded", "false");
+  }
 }
 
 /** Close the menu (all of them: there is one). */
@@ -339,14 +354,19 @@ const LANES = {
   ended: { label: "Ended (accepted, rejected, concluded)", status: ENDED.join(",") },
   withdrawn: { label: "Withdrawn", status: "withdrawn" },
   all: { label: "All", status: "" },
-  removed: { label: "Removed (hidden from the other lanes, kept in the history)", status: "" },
+  archived: { label: "Archived (hidden from the other lanes, kept in the history)", status: "" },
 };
-const PRESETS = [
-  ["no_process", "No process yet"],
-  ["quiet", "Quiet for 30+ days"],
-  ["fetch_problems", "Fetch problems"],
-];
-const FILTER_KEYS = ["q", "preset", "status", "tool", "item_type", "state", "source", "has_process", "related"];
+// Shortcuts: no controls of their own, only the dashboard's "Needs attention" links (`preset=`), shown as a notice with a way out.
+const PRESETS = {
+  no_process: "current matters with no process yet",
+  quiet: "matters in progress but quiet for 30+ days",
+  fetch_problems: "matters whose link couldn't be read",
+};
+const FILTER_KEYS = ["q", "preset", "status", "tool", "item_type", "state", "related"];
+/** Tool filter value for matters with no process (and so no tool). */
+const NO_TOOL = "none";
+/** The filter dropdown that is open (it stays open while its boxes are ticked, across the re-render each tick causes). */
+let openFilter = null;
 
 /**
  * Search, lanes, view toggle and filters of the items page, for both views ("list" or "timeline").
@@ -357,11 +377,11 @@ function listControls(params, view) {
   const defaultLane = view === "timeline" ? "all" : "current";
   const sort = view === "list";
   const searching = FILTER_KEYS.some((k) => params.get(k));
-  const lane = params.get("lane") ?? (searching ? "all" : defaultLane);
+  const lane = (params.get("lane") === "removed" ? "archived" : params.get("lane")) ?? (searching ? "all" : defaultLane); // `removed`: the old name of the lane
   const query = Object.fromEntries(FILTER_KEYS.map((k) => [k, params.get(k)]));
   query.status = params.get("status") || (LANES[lane]?.status ?? "");
   if (sort) query.sort = params.get("sort");
-  if (lane === "removed") query.removed = "only";
+  if (lane === "archived") query.removed = "only";
   // Children under their parent, unless asked for a flat list (`flat=1`).
   const hierarchy = params.get("flat") !== "1";
   if (hierarchy) query.hierarchy = "1";
@@ -386,30 +406,53 @@ function listControls(params, view) {
         options.map(([v, l]) => h("option", { value: v, selected: value === v }, l)),
       ),
     );
+  // Several values can be ticked at once: a button that opens a list of boxes. The choice is kept in the URL as a comma list.
+  const multi = (key, label, options) => {
+    const on = new Set((params.get(key) ?? "").split(",").filter(Boolean));
+    const names = options.filter(([v]) => on.has(v)).map(([, l]) => l);
+    const toggle = (v) => setParam(key, (on.has(v) ? [...on].filter((x) => x !== v) : [...on, v]).join(","));
+    const open = openFilter === key;
+    const panel = h(
+      "div",
+      { class: "dd-panel", role: "group", "aria-label": label, id: `dd-${key}`, hidden: !open },
+      options.map(([v, l]) => h("label", { class: "dd-opt" }, h("input", { type: "checkbox", id: `dd-${key}-${v}`, checked: on.has(v), onchange: () => toggle(v) }), l)),
+      on.size ? h("button", { type: "button", class: "link small", onclick: () => setParam(key, "") }, "Clear") : null,
+    );
+    const button = h(
+      "button",
+      {
+        type: "button",
+        class: `chip-btn dd-btn${on.size ? " on" : ""}`,
+        "aria-expanded": open ? "true" : "false",
+        "aria-controls": `dd-${key}`,
+        onclick: () => {
+          const wasOpen = openFilter === key;
+          closeFilters();
+          if (!wasOpen) (openFilter = key, panel.hidden = false, button.setAttribute("aria-expanded", "true"));
+        },
+      },
+      names.length ? `${label}: ${names.length <= 2 ? names.join(", ") : `${names.length} selected`}` : label,
+      h("span", { class: "dd-caret", "aria-hidden": "true" }, "▾"),
+    );
+    return h("div", { class: "dd" }, button, panel);
+  };
   const itemTypes = [...new Set([...S.tools.flatMap((t) => t.url_patterns.map((p) => p.item_type)), ...(S.custom_kinds ?? []).map((k) => k.kind)])];
-  const presets = h(
-    "div",
-    { class: "presets", role: "group", "aria-label": "Shortcuts" },
-    PRESETS.map(([k, l]) => h("button", { type: "button", class: `chip-btn${params.get("preset") === k ? " on" : ""}`, "aria-pressed": params.get("preset") === k ? "true" : "false", onclick: () => setParam("preset", params.get("preset") === k ? "" : k) }, l)),
-  );
   const filters = h(
     "details",
-    { class: "filters", open: ["preset", "status", "tool", "state", "source", "has_process", "item_type", "sort", "flat"].some((k) => params.get(k)) },
+    { class: "filters", open: ["status", "tool", "state", "item_type", "sort", "flat"].some((k) => params.get(k)) },
     h("summary", null, "Filters"),
-    presets,
     h(
       "div",
-      { class: "filter-grid" },
-      sel("status", "Status", QUESTION_STATES.map((s) => [s, STATE[s]])),
-      sel("source", "Status is", [["retrieved", "Retrieved"], ["typed", "Typed"]]),
-      sel("tool", "Tool", [[CUSTOM_TOOL_ID, "Custom process"], ...S.tools.map((t) => [t.id, t.name])]),
-      sel("item_type", "Item type", itemTypes.map((t) => [t, itemLabel(t)])),
-      sel("state", "Process state", Object.entries(STATE)),
-      sel("has_process", "Has a process", [["yes", "Yes"], ["no", "No"]]),
+      { class: "dd-row", role: "group", "aria-label": "Filters" },
+      multi("status", "Status", QUESTION_STATES.map((s) => [s, STATE[s]])),
+      multi("tool", "Tool", [[NO_TOOL, "No tool"], [CUSTOM_TOOL_ID, "Custom process"], ...S.tools.map((t) => [t.id, t.name])]),
+      itemTypes.length ? multi("item_type", "Item type", itemTypes.map((t) => [t, itemLabel(t)])) : null,
+      multi("state", "Process state", Object.entries(STATE)),
       sort ? sel("sort", "Order", [["", "Latest activity first"], ["created", "Newest first"]], null) : null,
       sel("flat", "Children", [["", "Under their parent"], ["1", "Listed apart (flat)"]], null),
     ),
   );
+  const presetChip = PRESETS[params.get("preset")] ? h("p", null, `Showing ${PRESETS[params.get("preset")]} · `, h("button", { class: "link", onclick: () => setParam("preset", "") }, "clear")) : null;
   const relatedChip = params.get("related") ? h("p", null, "Showing matters related to another · ", h("a", { href: `#/q/${params.get("related")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("related", "") }, "clear")) : null;
   // Lanes with counts, beside the search (the same on the list and the timeline). Withdrawn is the Status filter.
   const c = S.counts ?? {};
@@ -420,8 +463,8 @@ function listControls(params, view) {
     [
       ["current", `Current (${n(["not_started", "open"])})`],
       ["ended", `Ended (${n(ENDED)})`],
-      ["all", "All"],
-      ...(c.removed ? [["removed", `Removed (${c.removed})`]] : []),
+      ["all", `All (${n(QUESTION_STATES)})`],
+      ...(c.removed ? [["archived", `Archived (${c.removed})`]] : []),
     ].map(([k, label]) => {
       const p = new URLSearchParams(params);
       p.set("lane", k);
@@ -438,7 +481,7 @@ function listControls(params, view) {
     return h("a", { href: `#/list?${p}`, class: `view-btn${view === v ? " current" : ""}`, title: label, "aria-label": label, "aria-current": view === v ? "true" : null }, h("span", { class: `ico ico-${v}`, "aria-hidden": "true" }, h("i"), h("i"), h("i")));
   };
   const viewToggle = h("div", { class: "view-toggle", role: "group", "aria-label": "View" }, viewBtn("list", "Show as a list"), viewBtn("timeline", "Show on a timeline"));
-  return { searching, lane, query, hierarchy, controls: [h("div", { class: "toolbar" }, searchForm, viewToggle, laneNav), filters, relatedChip] };
+  return { searching, lane, query, hierarchy, controls: [h("div", { class: "toolbar" }, viewToggle, searchForm, laneNav), filters, presetChip, relatedChip] };
 }
 
 async function pageHome(params) {
@@ -450,15 +493,21 @@ async function pageHome(params) {
     const ctx = { tools: S.tools, since: S.since, space: S.space, hierarchy };
     body = questions.length
       ? h("ul", { class: "cards" }, hierarchy ? questionTree(questions, ctx) : questions.map((q) => questionCard(q, ctx)))
-      : h("p", { class: "empty" }, searching ? "No matters match." : lane === "removed" ? "Nothing is removed." : lane === "current" ? "No current matters. Add one above." : "Nothing here yet.");
+      : h("p", { class: "empty" }, searching ? "No matters match." : lane === "archived" ? "Nothing is archived." : lane === "current" ? "No current matters. Add one above." : "Nothing here yet.");
   } else {
     // The questions with a start date as bars over time, to their end (or today).
     const { items, undated, now } = await api("GET", `timeline${qs(query)}`);
+    const assumedStart = items.filter((it) => it.start.source === "assumed").length;
     const undatedNote = undated
       ? h("p", { class: "muted small" }, `${undated} matter${undated === 1 ? " has" : "s have"} no start date and ${undated === 1 ? "isn't" : "aren't"} shown. Dates come from the linked process, or can be set on each matter.`)
       : null;
     body = [
-      h("p", { class: "muted small" }, "Each matter with a start date, from its start to its end (or today if it's still running). Hover a bar for its dates."),
+      h(
+        "p",
+        { class: "muted small" },
+        "Each matter with a start date, from its start to its end (or today if it's still running). Hover a bar for its dates.",
+        assumedStart ? ` ${assumedStart} ${assumedStart === 1 ? "has" : "have"} no start date but a planned end: drawn from today.` : "",
+      ),
       items.length ? h("section", { class: "panel" }, timelineChart(items, now)) : h("p", { class: "empty" }, searching ? "No dated matters match." : "No matter has a start date yet."),
       undatedNote,
     ];
@@ -680,13 +729,13 @@ async function pageQuestion(id) {
       ? h(
           "div",
           { class: "removed-banner" },
-          h("strong", null, "Removed"),
+          h("strong", null, "Archived"),
           " ",
           time(q.removed_at, timeAgo(q.removed_at)),
           ". It's hidden from lists and its process is no longer refreshed.",
           canEdit() ? [" ", h("button", { onclick: async () => (await act(() => api("POST", `questions/${q.id}/restore`), "Restored")) && refresh() }, "Restore")] : null,
           " ",
-          h("a", { href: "#/list?lane=removed" }, "All removed"),
+          h("a", { href: "#/list?lane=archived" }, "All archived"),
         )
       : null,
     h("dl", { class: "meta" }, h("dt", null, "Added"), h("dd", null, q.created_by, " · ", time(q.created_at))),
@@ -711,14 +760,14 @@ async function pageQuestion(id) {
 function overflowMenu(q) {
   const remove = async () => {
     closeMenus();
-    const reason = prompt("Remove this matter? It's hidden from the lists but kept in the history, and can be restored.\n\nWhy? (optional)", "");
+    const reason = prompt("Archive this matter? It's hidden from the lists but kept in the history, and can be restored.\n\nWhy? (optional)", "");
     if (reason === null) return;
-    if (await act(() => api("POST", `questions/${q.id}/remove`, reason.trim() ? { reason: reason.trim() } : {}), "Removed")) {
+    if (await act(() => api("POST", `questions/${q.id}/remove`, reason.trim() ? { reason: reason.trim() } : {}), "Archived")) {
       await loadSpace();
-      location.hash = "#/list?lane=removed";
+      location.hash = "#/list?lane=archived";
     }
   };
-  const list = h("div", { class: "menu-list", hidden: true }, h("button", { type: "button", class: "danger-link", onclick: remove }, "Remove…"));
+  const list = h("div", { class: "menu-list", hidden: true }, h("button", { type: "button", class: "danger-link", onclick: remove }, "Archive…"));
   const button = h(
     "button",
     {

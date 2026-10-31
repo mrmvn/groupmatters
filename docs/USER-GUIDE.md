@@ -19,9 +19,9 @@ Every matter is in one of six categories: **Not started**, **In progress**, **Ac
 - A matter linked to a tool the register can read has its status **retrieved**: when the Loomio poll closes or the pull request is merged, it changes by itself.
 - Anyone can **type** a status instead, picking one of the group's status labels, like *Being discussed* or *Agreed*. "↺ use retrieved" goes back.
 
-**Around the page.** There are no tabs: the page opens on the box for adding a matter, then the matters. The **space name** (top left) always brings you back to the matters. The **Menu** (top right) has the **Dashboard**, **Tools**, **Activity**, **How this works** (the charter) and **Export** (downloads everything as JSON). The two symbols next to the lanes switch the items between a **list** (the default) and a **timeline**, keeping the same search and filters.
+**Around the page.** There are no tabs: the page opens on the box for adding a matter, then the matters. The **space name** (top left) always brings you back to the matters. The **Menu** (top right) has the **Dashboard**, **Tools**, **Activity**, **How this works** (the charter) and **Export** (downloads everything as JSON). The two symbols left of the search switch the items between a **list** (bulleted lines, the default) and a **timeline** (staggered bars), keeping the same search and filters.
 
-The lanes, to the right of the search: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **All**, each with its count. Withdrawn matters: **Filters → Status → Withdrawn**. The shortcuts (no process yet, quiet for 30+ days, fetch problems) are also under **Filters**. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
+The lanes, below the search: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **All** (every matter that isn't archived), each with its count, plus **Archived** when there are any. Withdrawn matters: **Filters → Status → Withdrawn**. In **Filters**, **Status**, **Tool**, **Item type** and **Process state** are drop-downs of boxes: tick several to see matters that match any of them (for instance GitHub *or* Loomio). **Tool → No tool** shows the matters with no process yet. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
 
 ## Adding a matter
 
@@ -50,11 +50,11 @@ Under **Details**, each value says where it comes from: **retrieved** (from the 
 
 ## Dashboard
 
-Open **Menu → Dashboard**: widgets of fixed sizes that fit together (at a glance, matters by status, top tools, momentum over 12 weeks, recently answered, kinds of item, what needs attention). They're prototypes: **Choose widgets** (or **Hide** on a widget) removes the ones you don't find useful, kept in your browser only; the others move up to fill the gap. There are no individual rankings: display names aren't verified.
+Open **Menu → Dashboard**: widgets of fixed sizes that fit together (at a glance, matters by status, top tools, kinds of item, what needs attention, momentum over 12 weeks, recently answered). They're prototypes: **Choose widgets** (or **Hide** on a widget) removes the ones you don't find useful, kept in your browser only; the others move up to fill the gap. There are no individual rankings: display names aren't verified.
 
 ## Timeline
 
-The **timeline** view (second symbol, next to the lanes; it opens on **All**) shows the matters that have a start date, each as a bar from its start to its end. Running matters reach today (dashed right edge); a planned end shows as a dashed outline; an ended matter with no end date shows a short fading mark. Colours are the status categories, and a vertical line marks today. Hover a bar for its dates. Matters without a start date are counted below the chart. The search, shortcuts and filters are the same as the list's, and the two symbols switch between the views with the same filters.
+The **timeline** view (second symbol, next to the lanes; it opens on **All**) shows the matters that have a start date, each as a bar from its start to its end. Running matters reach today (dashed right edge); a planned end shows as a dashed outline; an ended matter with no end date shows a short fading mark. Colours are the status categories, and a vertical line marks today. Hover a bar for its dates. A matter with no start date but a planned end still to come is drawn as if it started today (dashed outline; its tooltip says so). Other matters without a start date are counted below the chart. The search, shortcuts and filters are the same as the list's, and the two symbols switch between the views with the same filters.
 
 ## Related matters
 
@@ -68,9 +68,7 @@ To add one, first say what this matter is ("is related to", "is a child of", "is
 
 ## Shortcuts
 
-- **No process yet**: current matters not linked to anything.
-- **Quiet for 30+ days**: in progress, but nothing has happened for a month, here or on the platform.
-- **Fetch problems**: links that couldn't be read.
+The dashboard's **Needs attention** widget links to the matters that need a nudge: current matters with no process yet, matters in progress but quiet for 30+ days (here or on the platform), and links that couldn't be read. The list then says what it shows, with a **clear** link.
 
 ## Tools
 
@@ -80,4 +78,4 @@ To add one, first say what this matter is ("is related to", "is a child of", "is
 
 - Everything that changes is recorded in **Activity**, and that record can't be edited.
 - The same matter (same title, ignoring case and punctuation) or the same link can't be added twice: the register points you to the existing one.
-- **Remove…** hides a matter added by mistake (spam, test). It's kept and can be restored from the **Removed** lane of the matters page. On the matter's page, use the **⋯** menu → **Remove…**. For a matter that was dropped or didn't run its course, set a *Withdrawn* status instead, so it stays visible.
+- **Archive…** hides a matter added by mistake (spam, test) or no longer relevant. It's kept and can be restored from the **Archived** lane of the matters page. On the matter's page, use the **⋯** menu → **Archive…**. For a matter that was dropped or didn't run its course, set a *Withdrawn* status instead, so it stays visible.
