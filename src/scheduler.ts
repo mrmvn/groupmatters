@@ -3,6 +3,7 @@
 import type { Ctx } from "./ctx.ts";
 import * as repo from "./repo.ts";
 import { refreshProcess } from "./processes.ts";
+import { fetchMissingToolIcons } from "./toolicons.ts";
 
 export async function tick(ctx: Ctx) {
   const due = repo.dueProcesses(ctx.db, ctx.now().toISOString());
@@ -13,6 +14,11 @@ export async function tick(ctx: Ctx) {
       console.error(`refresh ${p.question_id}:`, (e as Error).message);
     }
     if (due.length > 1) await new Promise((r) => setTimeout(r, 250)); // be gentle with external APIs
+  }
+  try {
+    await fetchMissingToolIcons(ctx);
+  } catch (e) {
+    console.error("tool icons:", (e as Error).message);
   }
 }
 

@@ -2,7 +2,7 @@
 // so the group can try them and keep the useful ones. Data comes from GET dashboard (src/dashboard.ts).
 import { h, time, timeAgo, fmtShortDate } from "./dom.js";
 import { STATE, STATE_ICON, QUESTION_STATES, itemLabel } from "./labels.js";
-import { statusPill } from "./components.js";
+import { statusPill, toolIcon } from "./components.js";
 
 const HIDDEN_KEY = "qr:dash:hidden";
 const read = (k, fallback) => {
@@ -21,7 +21,7 @@ function bar(fraction, cls = "") {
   return h("span", { class: "bar", "aria-hidden": "true" }, fill);
 }
 
-/** A list of "label  ▇▇▇▇ n" rows. Each row: { label, n, href?, note? }. */
+/** A list of "label  ▇▇▇▇ n" rows. Each row: { label, n, href?, note?, icon? }. */
 function barRows(rows, max = Math.max(1, ...rows.map((r) => r.n))) {
   return h(
     "ul",
@@ -30,7 +30,7 @@ function barRows(rows, max = Math.max(1, ...rows.map((r) => r.n))) {
       h(
         "li",
         null,
-        h("span", { class: "bar-label" }, r.href ? h("a", { href: r.href }, r.label) : r.label, r.note ? h("span", { class: "muted small" }, ` ${r.note}`) : null),
+        h("span", { class: "bar-label" }, r.icon ? [r.icon, " "] : null, r.href ? h("a", { href: r.href }, r.label) : r.label, r.note ? h("span", { class: "muted small" }, ` ${r.note}`) : null),
         bar(r.n / max, r.cls),
         h("span", { class: "bar-n" }, r.n),
       ),
@@ -115,9 +115,9 @@ const WIDGETS = [
     title: "Top tools used",
     why: "Which tools the group's processes run on",
     cols: 2,
-    build: (d) => {
+    build: (d, ctx) => {
       const top = d.tools.slice(0, 5);
-      const rows = top.map((t) => ({ label: t.name, n: t.questions, href: `#/list?lane=all&tool=${t.custom ? "custom" : t.id}`, note: t.custom ? "(custom)" : t.in_progress ? `· ${t.in_progress} in progress` : "" }));
+      const rows = top.map((t) => ({ icon: toolIcon(t.custom ? { name: t.name } : (ctx.tools ?? []).find((x) => x.id === t.id) ?? t), label: t.name, n: t.questions, href: `#/list?lane=all&tool=${t.custom ? "custom" : t.id}`, note: t.custom ? "(custom)" : t.in_progress ? `· ${t.in_progress} in progress` : "" }));
       if (d.totals.without_process) rows.push({ label: "No tool attached", n: d.totals.without_process, href: "#/list?lane=all&tool=none", cls: "muted-fill" });
       const pct = d.totals.questions ? Math.round((d.totals.with_process / d.totals.questions) * 100) : 0;
       return h(

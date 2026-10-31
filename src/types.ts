@@ -121,6 +121,8 @@ export type Tool = {
   adapter?: string;
   added_by_question_id?: string;
   enabled: boolean;
+  /** The tool site's favicon as a data: URI, fetched by the server (tools without a bundled icon; see toolicons.ts). */
+  icon?: string;
 };
 
 export type ActivityEvent = {

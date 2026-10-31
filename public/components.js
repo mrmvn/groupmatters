@@ -11,6 +11,40 @@ export const questionPill = (q) => statusPill(q.status, q.status_label);
 /** A process state: the platform's own wording when known, coloured by category. */
 export const statePill = (state, raw) => h("span", { class: `pill ps-${state}`, title: raw && STATE[state] ? STATE[state] : undefined }, raw ?? STATE[state] ?? state);
 
+/**
+ * A tool's icon: its logo (bundled, or its site's favicon fetched by the server), else a monogram.
+ * Decorative: the tool's name is always written next to it. `tool` may be a name alone ({ name }).
+ */
+export function toolIcon(tool) {
+  if (!tool) return null;
+  const name = String(tool.name ?? "").replace(/^www\./i, "").trim();
+  const monogram = () => {
+    let hash = 0;
+    for (const c of name.toLowerCase()) hash = (hash * 31 + c.codePointAt(0)) >>> 0;
+    return h("span", { class: `tool-icon monogram hue-${hash % 8}`, "aria-hidden": "true" }, ([...name][0] ?? "?").toUpperCase());
+  };
+  if (!tool.icon?.url) return monogram();
+  return h("img", {
+    class: `tool-icon${tool.icon.mono ? " mono" : ""}`,
+    src: tool.icon.url,
+    alt: "",
+    "aria-hidden": "true",
+    width: 16,
+    height: 16,
+    decoding: "async",
+    onerror: (e) => e.target.replaceWith(monogram()),
+  });
+}
+
+/** The icon for a process: its tool's, or a monogram of the site (custom links) or of its kind. */
+export function processIcon(q, tools) {
+  const p = q.process;
+  if (!p) return null;
+  if (p.tool_id !== CUSTOM_TOOL_ID) return toolIcon(tools.find((t) => t.id === p.tool_id) ?? { name: p.tool_id });
+  const name = p.url ? new URL(p.url).hostname : q.fields?.kind?.value;
+  return name ? toolIcon({ name }) : null;
+}
+
 export function toolName(tools, id) {
   if (id === CUSTOM_TOOL_ID) return "Custom";
   return tools.find((t) => t.id === id)?.name ?? id;
@@ -35,6 +69,7 @@ export function processChip(q, tools) {
   return h(
     "span",
     { class: "chip" },
+    processIcon(q, tools),
     h("span", { class: "chip-tool" }, processKind(q, tools)),
     process.url ? h("a", { href: process.url, target: "_blank", rel: "noopener noreferrer", class: "chip-ext", title: `Open on ${process.tool_id === CUSTOM_TOOL_ID ? new URL(process.url).hostname : toolName(tools, process.tool_id)}`, "aria-label": "Open the process (new tab)" }, "↗") : null,
     hasState ? [" · ", statePill(f.state, f.raw_state)] : null,

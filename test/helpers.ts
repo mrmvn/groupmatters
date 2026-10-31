@@ -6,7 +6,7 @@ import { createSpace } from "../src/spaces.ts";
 
 export const fixture = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
 
-/** `body` is sent as-is when it's a string (HTML pages), as JSON otherwise. */
+/** `body` is sent as-is when it's a string (HTML pages) or bytes (images), as JSON otherwise. */
 export type FakeRoute = { status?: number; body?: unknown; headers?: Record<string, string> };
 
 /** A test context: in-memory DB, controllable clock, fake network keyed by exact URL. */
@@ -19,7 +19,7 @@ export function makeCtx(routes: Record<string, FakeRoute | ((init?: RequestInit)
     const r = routes[url];
     if (!r) return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
     const route = typeof r === "function" ? r(init) : r;
-    const body = route.status === 304 || (route.status ?? 200) >= 300 && (route.status ?? 200) < 400 ? null : typeof route.body === "string" ? route.body : JSON.stringify(route.body);
+    const body = route.status === 304 || (route.status ?? 200) >= 300 && (route.status ?? 200) < 400 ? null : typeof route.body === "string" || route.body instanceof Uint8Array ? (route.body as string | Uint8Array<ArrayBuffer>) : JSON.stringify(route.body);
     return new Response(body, { status: route.status ?? 200, headers: route.headers });
   };
   const ctx: Ctx = {

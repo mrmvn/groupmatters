@@ -24,7 +24,7 @@ Types (see `src/types.ts`):
 - **Process** (nested as `question.process`): `{url?, tool_id, item_type, fetch_mode, fetched?}`. `fetched` holds only retrieved data. Custom processes (no link, or a link to a site not on the tool list) have `tool_id: "custom"` and an empty `item_type`; their kind is typed on the question.
 - **Fetched**: `{title?, raw_state?, state, terminal, outcome_summary?, dates?: {opens_at?, closes_at?, resolved_at?, updated_at?}, extra?, fetched_at, fetch_error?}`. `dates.updated_at` is the last activity on the platform, when known.
 - **Relation**: `{from_id, to_id, kind: "related"|"child_of"|"duplicate", created_at, created_by}`. Directed: `child_of` means `from` is a child of `to` (its parent); `duplicate` means `from` duplicates `to`; `related` is symmetric. The `child_of` links never form a loop. New kind only: the format version is unchanged.
-- **Tool**: `{id, name, description?, url_patterns: [{pattern, item_type}], fetch_mode, adapter?, enabled}`. `description` ("what is it useful for?") is additive (migration 6), so the format version is unchanged.
+- **Tool**: `{id, name, description?, url_patterns: [{pattern, item_type}], fetch_mode, adapter?, enabled}`. `description` ("what is it useful for?") is additive (migration 6), so the format version is unchanged. `icon` (the tool site's favicon as a `data:` URI, fetched by the server; tools with a bundled icon have none) is additive too (migration 12).
 - **ActivityEvent**: `{id, space_id, question_id?, at, actor, action, data}`. `actor` is a display name, `system` or `operator`. `data` holds before/after values for the action.
 
 ### Changes from earlier versions

@@ -63,6 +63,8 @@ export type SafeResponse = {
   url: string;
   /** The body as text, read with the size cap. */
   text(): Promise<string>;
+  /** The raw body, read with the size cap. */
+  bytes(): Promise<Buffer>;
   /** Release the connection without reading the body. */
   discard(): void;
 };
@@ -107,6 +109,7 @@ export async function safeFetch(ctx: Ctx, url: string, opts: SafeFetchOptions): 
       headers: res.headers,
       url: current,
       text: () => readCapped(res, opts.maxBytes, !!opts.truncate),
+      bytes: () => readCappedBytes(res, opts.maxBytes, !!opts.truncate),
       discard: () => void res.body?.cancel().catch(() => {}),
     };
   }
@@ -114,12 +117,17 @@ export async function safeFetch(ctx: Ctx, url: string, opts: SafeFetchOptions): 
 
 /** Read a body as text, stopping at `max` bytes: truncate, or throw `FetchRefused`. */
 export async function readCapped(res: Response, max: number, truncate = false): Promise<string> {
+  return new TextDecoder().decode(await readCappedBytes(res, max, truncate));
+}
+
+/** Read a body, stopping at `max` bytes: truncate, or throw `FetchRefused`. */
+export async function readCappedBytes(res: Response, max: number, truncate = false): Promise<Buffer> {
   const declared = Number(res.headers.get("content-length"));
   if (!truncate && Number.isFinite(declared) && declared > max) {
     res.body?.cancel().catch(() => {});
     throw new FetchRefused("Response too large");
   }
-  if (!res.body) return "";
+  if (!res.body) return Buffer.alloc(0);
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -134,5 +142,5 @@ export async function readCapped(res: Response, max: number, truncate = false): 
     reader.cancel().catch(() => {});
   }
   if (size > max && !truncate) throw new FetchRefused("Response too large");
-  return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, max));
+  return Buffer.concat(chunks).subarray(0, max);
 }

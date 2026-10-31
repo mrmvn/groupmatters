@@ -44,6 +44,7 @@
 
     <h2>Pages the server fetches</h2>
     <p>When a matter links to a public page (GitHub, GitLab, Loomio, Polis, Decidim…), the server fetches that page or its public API to show and update its status. Only that URL is requested; none of your names or notes are sent. Some of these requests carry the operator's own API token (never yours).</p>
+    <p>When a group adds a tool to its list, the server fetches that site's icon (favicon) once and keeps a copy, so it can be shown next to the tool's name. The icons of the built-in tools come with the app. Either way, they're served from this server: your browser never contacts those sites to show them.</p>
 
     <h2>Your rights</h2>
     <p>You can ask the operator to show you the data that mentions you, to correct it, or to remove it. Anyone with edit access can also download a complete copy of a space as JSON (menu → Export). Your data stays on the server until the operator deletes the space; the operator may keep backups for a limited time.</p>

@@ -1,6 +1,6 @@
 // JSON API. All UI actions go through here, authenticated by the space token in the path.
 import type { Ctx } from "../ctx.ts";
-import type { Role, Space } from "../types.ts";
+import type { Role, Space, Tool } from "../types.ts";
 import { CUSTOM_TOOL_ID } from "../types.ts";
 import * as repo from "../repo.ts";
 import * as Q from "../questions.ts";
@@ -15,6 +15,19 @@ import { withFields } from "../fields.ts";
 import { adapterIds, getAdapter } from "../adapters/index.ts";
 import { rotateLink, setCharter } from "../spaces.ts";
 import { forbidden, HttpError, notFound, bad } from "../util.ts";
+import { toolIcon, updateToolIcon } from "../toolicons.ts";
+
+/** A tool with `icon` as the UI shows it ({ url, mono }), instead of the stored data: URI. */
+const withIcon = <T extends Tool>(t: T) => ({ ...t, icon: toolIcon(t) });
+
+/** Fetch a new or moved tool's icon, waiting a few seconds at most (the scheduler retries later). */
+async function iconSoon(ctx: Ctx, space: Space, toolId: string) {
+  const t = repo.getTool(ctx.db, space.id, toolId);
+  const tried = ctx.db.prepare("SELECT icon_checked_at FROM tools WHERE space_id = ? AND id = ?").get(space.id, toolId) as { icon_checked_at: string | null } | undefined;
+  if (!t || t.icon || tried?.icon_checked_at) return;
+  const done = updateToolIcon(ctx, space.id, t).catch(() => {});
+  await Promise.race([done, new Promise((r) => setTimeout(r, 8_000).unref())]);
+}
 
 export type ApiReq = {
   method: string;
@@ -66,7 +79,7 @@ function toolsView(ctx: Ctx, space: Space, used = usage(ctx, space).tools) {
     const a = t.adapter ? getAdapter(t.adapter) : undefined;
     const usable = t.fetch_mode === "auto" && !!a && (!a.available || a.available(ctx));
     const u = used.get(t.id) ?? { questions: 0, in_progress: 0 };
-    return t.fetch_mode === "auto" && !usable ? { ...t, fetch_mode: "manual" as const, auto_unavailable: true, usage: u } : { ...t, usage: u };
+    return withIcon(t.fetch_mode === "auto" && !usable ? { ...t, fetch_mode: "manual" as const, auto_unavailable: true, usage: u } : { ...t, usage: u });
   });
 }
 
@@ -107,11 +120,12 @@ function questionDetail(ctx: Ctx, space: Space, id: string) {
   });
   // Parents, children, related, then duplicates; the oldest first within each.
   related.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
+  const tool = q.process && q.process.tool_id !== CUSTOM_TOOL_ID ? repo.getTool(ctx.db, space.id, q.process.tool_id) : undefined;
   return {
     question: withFields(q),
     related,
     activity: repo.listActivity(ctx.db, space.id, { questionId: q.id, limit: 200 }),
-    tool: q.process && q.process.tool_id !== CUSTOM_TOOL_ID ? repo.getTool(ctx.db, space.id, q.process.tool_id) : undefined,
+    tool: tool && withIcon(tool),
   };
 }
 
@@ -171,9 +185,13 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
   if (a === "tools") {
     if (method === "POST" && !id) {
       // Links already in the register that the new tool recognises start being retrieved.
-      const { matched } = addToolDirect(ctx, space, actor, r.body);
+      const { tool, matched } = addToolDirect(ctx, space, actor, r.body);
       for (const qid of matched) await P.refreshProcess(ctx, qid);
-    } else if (method === "PATCH" && id && !b) editToolDirect(ctx, space, actor, id, r.body);
+      await iconSoon(ctx, space, tool.id);
+    } else if (method === "PATCH" && id && !b) {
+      editToolDirect(ctx, space, actor, id, r.body);
+      await iconSoon(ctx, space, id);
+    }
     else if (method === "POST" && id && b === "enabled") setToolEnabledDirect(ctx, space, actor, id, r.body?.enabled);
     else throw notFound();
     return { tools: toolsView(ctx, space) };

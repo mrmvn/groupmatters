@@ -10,7 +10,7 @@
 import { api, qs, getName, setName, TOKEN, ApiError } from "./api.js";
 import { h, extLink, fmtDate, time, timeAgo, toast, debounce } from "./dom.js";
 import { STATE, STATE_HINT, QUESTION_STATES, ENDED, CUSTOM_TOOL_ID, ROLE, RELATE_AS, itemLabel } from "./labels.js";
-import { statusPill, questionPill, statePill, questionTree, questionCard, activityItem, mappingEditor } from "./components.js";
+import { statusPill, questionPill, statePill, questionTree, questionCard, activityItem, mappingEditor, toolIcon } from "./components.js";
 import { renderMarkdown } from "./md.js";
 import { fieldCell, createFields, retrievedFromPreview, FIELD_LABEL } from "./fields.js";
 import { timelineChart } from "./timeline.js";
@@ -609,7 +609,7 @@ async function pageHome(params) {
 
 async function pageDashboard() {
   const d = await api("GET", `dashboard${qs({ since: S.since })}`);
-  return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name, back: backToItems() });
+  return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name, tools: S.tools, back: backToItems() });
 }
 
 /** The add bar: "Name or link a matter", with a few examples of what a matter can be when there's room. */
@@ -708,6 +708,7 @@ function composer(opts = {}) {
       h(
         "div",
         { class: "link-preview" },
+        toolIcon(S.tools.find((t) => t.id === preview.tool_id) ?? { name: preview.tool_name }), " ",
         h("strong", null, preview.tool_name), " · ", itemLabel(preview.item_type),
         preview.fetched ? [" · ", statePill(preview.fetched.state, preview.fetched.raw_state), preview.fetched.outcome_summary ? ` ${preview.fetched.outcome_summary}` : ""] : preview.fetch_mode === "manual" ? h("span", { class: "muted" }, " · status and dates will be typed") : null,
         preview.fetch_error ? h("p", { class: "warn" }, preview.fetch_mode === "manual" ? `${preview.fetch_error}: its status and dates will be typed.` : `Couldn't retrieve details: ${preview.fetch_error}`) : null,
@@ -954,7 +955,7 @@ function toolHints() {
     "details",
     { class: "tool-hints hint" },
     h("summary", null, `Tools on the list: ${tools.map((t) => t.name).join(", ")}`),
-    h("ul", null, tools.map((t) => h("li", null, h("strong", null, t.name), t.description ? ` — ${t.description}` : null))),
+    h("ul", null, tools.map((t) => h("li", null, toolIcon(t), " ", h("strong", null, t.name), t.description ? ` — ${t.description}` : null))),
   );
 }
 
@@ -993,6 +994,7 @@ function processBlock(q, d, openForm) {
   const toolLine = custom
     ? h("span", { class: "muted" }, p.url ? ["Not on the tool list: nothing is retrieved. ", canEditQ(q) ? h("a", { href: `#/tools/add-tool${qs({ url: p.url })}` }, "Add this tool") : null] : "No link: everything is typed.")
     : [
+        toolIcon(tool ?? { name: p.tool_id }), " ",
         h("strong", null, tool?.name ?? p.tool_id),
         h(
           "span",
@@ -1132,7 +1134,7 @@ async function pageRules(sub, params) {
               h(
                 "tr",
                 { class: t.enabled ? "" : "disabled" },
-                h("td", null, h("strong", null, t.name), t.description ? h("div", { class: "muted small" }, t.description) : null),
+                h("td", null, h("span", { class: "tool-name" }, toolIcon(t), h("strong", null, t.name)), t.description ? h("div", { class: "muted small" }, t.description) : null),
                 h("td", null, t.url_patterns.map((p) => h("div", null, h("code", null, p.pattern), " → ", itemLabel(p.item_type)))),
                 h("td", null, updates(t)),
                 h("td", null, used(t.usage, `#/list${qs({ lane: "all", tool: t.id })}`)),

@@ -109,6 +109,7 @@ export function editToolDirect(ctx: Ctx, space: Space, actor: string, toolId: st
     repo.updateTool(ctx.db, space.id, updated);
     repo.logEvent(ctx, { space_id: space.id, actor, action: "tool.edited", data: { tool_id: tool.id, before, after } });
     if (!tool.adapter) adoptLinks(ctx, space, updated, actor);
+    if (JSON.stringify(before.url_patterns) !== JSON.stringify(after.url_patterns)) repo.clearToolIcon(ctx.db, space.id, tool.id);
   });
   return updated;
 }

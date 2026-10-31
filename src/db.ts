@@ -146,6 +146,8 @@ export const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   // v11: the charter column now holds only the group's own "About this group" text; the app's help moved into the UI.
   // Spaces whose charter was never changed still hold the old default text, so it is cleared.
   `UPDATE spaces SET charter_markdown = '' WHERE NOT EXISTS (SELECT 1 FROM activity a WHERE a.space_id = spaces.id AND a.action = 'charter.changed');`,
+  // v12: tools without a bundled icon get their site's favicon, fetched once by the server (toolicons.ts).
+  `ALTER TABLE tools ADD COLUMN icon TEXT; ALTER TABLE tools ADD COLUMN icon_checked_at TEXT;`,
 ];
 
 /**

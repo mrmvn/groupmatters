@@ -83,6 +83,7 @@ function rowToTool(r: Row): Tool {
     adapter: u(r.adapter),
     added_by_question_id: u(r.added_by_question_id),
     enabled: !!r.enabled,
+    icon: u(r.icon),
   };
 }
 
@@ -122,6 +123,11 @@ export function updateTool(db: DatabaseSync, spaceId: string, t: Tool) {
     spaceId,
     t.id,
   );
+}
+
+/** Forget a tool's fetched icon (its site changed), so it is fetched again. */
+export function clearToolIcon(db: DatabaseSync, spaceId: string, id: string) {
+  db.prepare("UPDATE tools SET icon = NULL, icon_checked_at = NULL WHERE space_id = ? AND id = ?").run(spaceId, id);
 }
 
 export function setToolEnabled(db: DatabaseSync, spaceId: string, id: string, enabled: boolean) {

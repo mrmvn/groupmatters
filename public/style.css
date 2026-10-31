@@ -447,3 +447,21 @@ a.tile:hover { border-color: var(--muted); }
 .help-states { list-style: none; padding-left: 0; } .help-states li { margin: 4px 0; }
 .help h2, .about h2 { font-size: 1.1rem; margin: 1.2rem 0 .3rem; } .help h2:first-child, .about h2:first-child { margin-top: 0; }
 .about textarea { width: 100%; }
+
+/* Tool icons: logo (bundled or the site's favicon, served from here) or a monogram. Always next to the tool's name. */
+.tool-icon { display: inline-block; width: 16px; height: 16px; flex: none; vertical-align: -3px; border-radius: 3px; object-fit: contain; }
+.monogram {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 700; line-height: 1; font-style: normal;
+  background: hsl(var(--hue) 40% 86%); color: hsl(var(--hue) 45% 26%);
+}
+.hue-0 { --hue: 0; } .hue-1 { --hue: 35; } .hue-2 { --hue: 85; } .hue-3 { --hue: 150; }
+.hue-4 { --hue: 190; } .hue-5 { --hue: 225; } .hue-6 { --hue: 270; } .hue-7 { --hue: 320; }
+.tool-name { display: inline-flex; align-items: center; gap: 6px; }
+.tool-hints li .tool-icon { margin-right: 2px; }
+@media (prefers-color-scheme: dark) {
+  .monogram { background: hsl(var(--hue) 25% 28%); color: hsl(var(--hue) 50% 86%); }
+  /* Single-colour logos are black: draw them light. Others sit on a light tile so dark logos stay visible. */
+  img.tool-icon.mono { filter: invert(1); }
+  img.tool-icon:not(.mono) { background: #f4f4f1; padding: 1px; }
+}
