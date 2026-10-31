@@ -492,6 +492,22 @@ test("process chips on cards link out to the platform", async () => {
   assert.ok(links.every((l) => l.getAttribute("target") === "_blank" && l.getAttribute("rel")?.includes("noopener")));
 });
 
+test("tool and item type on a card's chip filter the list, and clear it when clicked again", async () => {
+  const main = await go("#/list?lane=all");
+  const gh = ([...main.querySelectorAll(".chip-filter")] as any[]).find((a) => a.textContent === "GitHub");
+  assert.ok(gh, "tool name is a link");
+  assert.match(gh.getAttribute("href"), /^#\/list\?lane=all&tool=github$/);
+  const filtered = await go(gh.getAttribute("href"));
+  const on = ([...filtered.querySelectorAll(".chip-filter.on")] as any[]);
+  assert.ok(on.length && on.every((a) => a.textContent === "GitHub"), "active filter is marked");
+  assert.equal(on[0].getAttribute("href"), "#/list?lane=all", "clicking again resets to any");
+  const type = ([...filtered.querySelectorAll(".chip-filter")] as any[]).find((a) => a.textContent === "pull request");
+  assert.match(type.getAttribute("href"), /tool=github&item_type=pull_request/, "filters combine");
+  // The lane is kept when a filter is set from the default lane.
+  const current = await go("#/list");
+  assert.match(([...current.querySelectorAll(".chip-filter")] as any[])[0].getAttribute("href"), /lane=current/);
+});
+
 /** A drop event carrying a link, as browsers send when dragging one from another tab. */
 function dropLink(url: string, target: any = document.querySelector("main")) {
   const data: Record<string, string> = { "text/uri-list": url, "text/plain": url };
@@ -551,11 +567,19 @@ test("tool edit page renders for manual tools", async () => {
 test("rules list shows what each tool is for and how much it's used; automatic tools edit name and description only", async () => {
   const rules = await go("#/tools");
   assert.match(rules.textContent!, /Group decisions/);
-  assert.match(rules.textContent!, /Used by/);
+  assert.match(rules.textContent!, /Handles/);
+  assert.match(rules.textContent!, /Actions/);
+  assert.doesNotMatch(rules.textContent!, /Used by|Links accepted/);
   assert.ok(rules.querySelector('a[href="#/list?lane=all&tool=github"]'), "usage links to the filtered list");
+  const handles = rules.querySelector("details.handles") as any;
+  assert.match(handles.querySelector("summary").textContent, /pull request · issue/, "item types, not patterns, in the summary");
+  assert.match(handles.textContent, /Retrieves: title, status/, "what is retrieved, per item type");
+  assert.match(handles.querySelector("code").textContent, /^https:\/\/github\.com\//, "patterns on demand");
   assert.ok(rules.querySelector('a[href="#/tools/tool?id=github"]'), "automatic tools have an Edit link");
   const main = await go("#/tools/tool?id=github");
   assert.equal((main.querySelector("input[type=text]") as any).value, "GitHub");
+  assert.match(main.textContent!, /Links accepted/, "patterns shown read-only");
+  assert.match(main.querySelector(".handles-detail")!.textContent!, /github\.com\/:owner\/:repo\/pull/);
   const visible = ([...main.querySelectorAll("textarea")] as any[]).filter((t) => !t.closest("[hidden]"));
   assert.equal(visible.length, 1, "only the description");
   visible[0].value = "Our code and docs";

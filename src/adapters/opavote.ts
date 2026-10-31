@@ -50,6 +50,9 @@ export function normalizeItem(d: any): F {
 
 export const opavote: Adapter = {
   id: "opavote",
+  retrieves: {
+    vote: ["title", "status", "number of contests", "poll or election", "results link"],
+  },
   parse(url): Parsed | null {
     const m = RE.exec(url);
     return m ? { item_type: "vote", ids: { eid: m[1] } } : null;

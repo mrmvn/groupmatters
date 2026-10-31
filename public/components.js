@@ -58,20 +58,48 @@ export function processKind(q, tools) {
   return kind ? `${toolName(tools, p.tool_id)} · ${itemLabel(kind)}` : toolName(tools, p.tool_id);
 }
 
-/** Compact chip: tool · kind · the platform's word for its state · key extra value */
-export function processChip(q, tools) {
+/**
+ * A link that filters the list by one value of `key` ("tool", "item_type"), or clears that filter when
+ * the value is the only one on. `filters` = { params, lane } of the list being shown; the lane is kept.
+ */
+function filterLink(key, value, label, noun, filters, children) {
+  const current = (filters.params.get(key) ?? "").split(",").filter(Boolean);
+  const on = current.length === 1 && current[0] === value;
+  const p = new URLSearchParams(filters.params);
+  p.set("lane", filters.lane);
+  if (on) p.delete(key);
+  else p.set(key, value);
+  return h("a", { href: `#/list?${p}`, class: `chip-filter${on ? " on" : ""}`, title: on ? `Showing only ${label}: click to show every ${noun}` : `Show only ${label}`, "aria-current": on ? "true" : null }, children ?? label);
+}
+
+/** Compact chip: tool · kind · the platform's word for its state · key extra value. Tool and kind filter the list when `filters` is given. */
+export function processChip(q, tools, filters) {
   const process = q.process;
   if (!process) return null;
   const f = process.fetched;
   const extra = f?.extra ?? {};
   const key = ["participants", "votes", "forecasters", "comments"].find((k) => extra[k] !== undefined);
   const hasState = process.fetch_mode === "auto" && f && f.state !== "unknown";
+  const custom = process.tool_id === CUSTOM_TOOL_ID;
+  const kind = q.fields?.kind?.value ?? process.item_type;
+  const kindValue = custom ? kind : process.item_type || kind;
+  const text = processKind(q, tools);
+  let label;
+  if (!filters) label = h("span", { class: "chip-tool" }, text);
+  else if (custom) label = kind ? filterLink("item_type", kindValue, itemLabel(kind), "kind", filters, h("span", { class: "chip-tool" }, itemLabel(kind))) : h("span", { class: "chip-tool" }, text);
+  else
+    label = h(
+      "span",
+      { class: "chip-tool" },
+      filterLink("tool", process.tool_id, toolName(tools, process.tool_id), "tool", filters),
+      kind ? [" · ", filterLink("item_type", kindValue, itemLabel(kind), "item type", filters)] : null,
+    );
   return h(
     "span",
     { class: "chip" },
     processIcon(q, tools),
-    h("span", { class: "chip-tool" }, processKind(q, tools)),
-    process.url ? h("a", { href: process.url, target: "_blank", rel: "noopener noreferrer", class: "chip-ext", title: `Open on ${process.tool_id === CUSTOM_TOOL_ID ? new URL(process.url).hostname : toolName(tools, process.tool_id)}`, "aria-label": "Open the process (new tab)" }, "↗") : null,
+    label,
+    process.url ? h("a", { href: process.url, target: "_blank", rel: "noopener noreferrer", class: "chip-ext", title: `Open on ${custom ? new URL(process.url).hostname : toolName(tools, process.tool_id)}`, "aria-label": "Open the process (new tab)" }, "↗") : null,
     hasState ? [" · ", statePill(f.state, f.raw_state)] : null,
     key ? h("span", { class: "muted" }, ` · ${extra[key]} ${key.replace(/_/g, " ")}`) : null,
     f?.fetch_error ? h("span", { class: "warn", title: f.fetch_error }, " ⚠") : null,
@@ -131,7 +159,7 @@ export function questionCard(q, ctx, children = [], kidIds = []) {
       h(
         "div",
         { class: "card-meta" },
-        processChip(q, tools),
+        processChip(q, tools, ctx.filters),
         q.fields?.summary?.value ? h("span", { class: "muted" }, q.fields.summary.value) : null,
       ),
       h(

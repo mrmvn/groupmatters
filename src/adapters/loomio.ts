@@ -96,6 +96,10 @@ function check(status: number, json: any) {
 
 export const loomio: Adapter = {
   id: "loomio",
+  retrieves: {
+    poll: ["title", "status", "dates (opening, closing)", "last activity", "results per option", "votes cast and eligible", "the facilitator's outcome"],
+    discussion: ["title", "status", "dates", "last activity", "replies", "active polls"],
+  },
   parse(url) {
     const m = RE.exec(url);
     if (!m) return null;

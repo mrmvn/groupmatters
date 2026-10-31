@@ -15,6 +15,10 @@ Every process state and every question status is in one of six **categories**:
 
 Each tool on a space's list has an optional **description** ("What is it useful for?"): built-in tools come with one, and anyone with edit access can change it, on any tool. It is shown in the Tools page, with how many questions use the tool, and when linking a process.
 
+The Tools page lists, for each tool, the item types it handles; opening them shows what is retrieved for each (the adapter's `retrieves` list, kept next to its code: update it with the table below) and the exact link patterns. Tools with a built-in reader (an adapter) show their patterns read-only on the edit page: the adapter must be able to parse every link the patterns accept, so only manual tools can change them.
+
+On the matters list, a card's tool and item type are links that filter the list by that value; clicking the active one clears the filter.
+
 Each of a question's fields (title, kind, status, summary, results link, start, end) is **retrieved** from the linked item or **typed** by someone. A typed value wins until someone chooses "↺ use retrieved". What can be retrieved depends on the tool:
 
 | Link | Retrieved | Typed |

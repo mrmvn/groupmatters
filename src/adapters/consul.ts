@@ -131,6 +131,12 @@ function buildQuery(parsed: Parsed, fields: string[], casing: "camel" | "snake")
 
 export const consul: Adapter = {
   id: "consul",
+  retrieves: {
+    proposal: ["title", "status", "dates", "last milestone", "supports", "comments", "the retirement explanation"],
+    debate: ["title", "opening date", "votes for and against", "comments"],
+    budget: ["name", "phase"],
+    investment: ["title", "status", "last milestone", "feasibility", "price", "comments", "budget"],
+  },
   parse(url): Parsed | null {
     const m = RE.exec(url);
     if (!m) return null;

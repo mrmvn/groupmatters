@@ -146,6 +146,12 @@ function buildQuery(parsed: Parsed, fields: string[]): string {
 
 export const decidim: Adapter = {
   id: "decidim",
+  retrieves: {
+    proposal: ["title", "status", "dates", "last activity", "supports", "comments", "the official answer"],
+    debate: ["title", "status", "dates", "last activity", "comments", "conclusions"],
+    meeting: ["title", "status", "dates (start, end)", "last activity", "attendees", "closing report"],
+    participatory_process: ["title", "status (with the current step)", "dates (start, end)", "last activity", "number of steps"],
+  },
   parse(url): Parsed | null {
     const m = RE.exec(url);
     if (!m) return null;

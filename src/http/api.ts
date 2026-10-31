@@ -73,13 +73,14 @@ function usage(ctx: Ctx, space: Space) {
   return { tools, custom: customKinds };
 }
 
-/** Tools as the UI needs them: `fetch_mode` is the effective mode on this server, plus `usage`. */
+/** Tools as the UI needs them: `fetch_mode` is the effective mode on this server, plus `usage` and, for tools with an adapter, what `retrieves` per item type. */
 function toolsView(ctx: Ctx, space: Space, used = usage(ctx, space).tools) {
   return repo.listTools(ctx.db, space.id).map((t) => {
     const a = t.adapter ? getAdapter(t.adapter) : undefined;
     const usable = t.fetch_mode === "auto" && !!a && (!a.available || a.available(ctx));
     const u = used.get(t.id) ?? { questions: 0, in_progress: 0 };
-    return withIcon(t.fetch_mode === "auto" && !usable ? { ...t, fetch_mode: "manual" as const, auto_unavailable: true, usage: u } : { ...t, usage: u });
+    const retrieves = a?.retrieves;
+    return withIcon(t.fetch_mode === "auto" && !usable ? { ...t, fetch_mode: "manual" as const, auto_unavailable: true, usage: u, retrieves } : { ...t, usage: u, retrieves });
   });
 }
 

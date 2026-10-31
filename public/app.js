@@ -582,7 +582,7 @@ async function pageHome(params) {
   let body;
   if (view === "list") {
     const { questions } = await api("GET", `questions${qs(query)}`);
-    const ctx = { tools: S.tools, since: S.since, space: S.space, hierarchy };
+    const ctx = { tools: S.tools, since: S.since, space: S.space, hierarchy, filters: { params, lane } };
     body = questions.length
       ? h("ul", { class: "cards" }, hierarchy ? questionTree(questions, ctx) : questions.map((q) => questionCard(q, ctx)))
       : h("p", { class: "empty" }, searching ? "No matters match." : lane === "archived" ? "Nothing is archived." : lane === "current" ? "No current matters. Add one above." : "Nothing here yet.");
@@ -1097,6 +1097,36 @@ function relationsBlock(q, d) {
 
 // ---------------------------------------------------------------- rules
 
+/** The item types a tool handles, once each, in order. */
+const toolTypes = (t) => [...new Set(t.url_patterns.map((p) => p.item_type))];
+
+/** What a tool handles: its item types, and on click what is retrieved for each and the exact link patterns. */
+function toolHandles(t) {
+  return h(
+    "details",
+    { class: "handles" },
+    h("summary", null, toolTypes(t).map(itemLabel).join(" · ") || "—"),
+    toolLinksDetail(t),
+  );
+}
+
+/** Per item type, what is retrieved (automatic tools), and the link patterns, as code. */
+function toolLinksDetail(t) {
+  return h(
+    "div",
+    { class: "handles-detail small" },
+    toolTypes(t).map((type) =>
+      h(
+        "div",
+        { class: "handles-type" },
+        h("strong", null, itemLabel(type)),
+        t.retrieves?.[type] ? h("div", { class: "muted" }, `${t.fetch_mode === "auto" ? "Retrieves" : "Would retrieve, once the server is set up"}: ${t.retrieves[type].join(", ")}.`) : null,
+        t.url_patterns.filter((p) => p.item_type === type).map((p) => h("div", null, h("code", null, p.pattern))),
+      ),
+    ),
+  );
+}
+
 async function pageRules(sub, params) {
   if (sub === "add-tool") return toolFormPage({ url: params.get("url") });
   if (sub === "tool") {
@@ -1104,7 +1134,10 @@ async function pageRules(sub, params) {
     if (!tool) throw new Error("Unknown tool");
     return toolFormPage({ tool });
   }
-  const updates = (t) => (t.fetch_mode === "auto" ? "everything it can" : t.auto_unavailable ? "kind and title (more needs server setup)" : "kind and page title");
+  const updates = (t) =>
+    t.fetch_mode === "auto"
+      ? h("span", null, "Automatic")
+      : h("span", null, "By hand", h("div", { class: "muted small" }, t.auto_unavailable ? "Kind and title only: more needs server setup" : "Kind and page title only"));
   const used = (u, href) =>
     u?.questions ? h("a", { href }, `${u.questions} matter${u.questions === 1 ? "" : "s"}`, u.in_progress ? ` · ${u.in_progress} in progress` : "") : h("span", { class: "muted" }, "—");
   const customKinds = S.custom_kinds ?? [];
@@ -1126,7 +1159,7 @@ async function pageRules(sub, params) {
         h(
           "table",
           null,
-          h("thead", null, h("tr", null, h("th", null, "Tool"), h("th", null, "Links accepted"), h("th", null, "Retrieves"), h("th", null, "Used by"), h("th", null, "Status"), canEdit() ? h("th", null) : null)),
+          h("thead", null, h("tr", null, h("th", null, "Tool"), h("th", null, "Handles"), h("th", null, "Updates"), canEdit() ? h("th", null, "Actions") : null)),
           h(
             "tbody",
             null,
@@ -1134,15 +1167,19 @@ async function pageRules(sub, params) {
               h(
                 "tr",
                 { class: t.enabled ? "" : "disabled" },
-                h("td", null, h("span", { class: "tool-name" }, toolIcon(t), h("strong", null, t.name)), t.description ? h("div", { class: "muted small" }, t.description) : null),
-                h("td", null, t.url_patterns.map((p) => h("div", null, h("code", null, p.pattern), " → ", itemLabel(p.item_type)))),
+                h(
+                  "td",
+                  { class: "tool-cell" },
+                  h("span", { class: "tool-name" }, toolIcon(t), h("strong", null, t.name), t.enabled ? null : h("span", { class: "badge" }, "disabled")),
+                  t.description ? h("div", { class: "muted small" }, t.description) : null,
+                  h("div", { class: "small" }, t.usage?.questions ? used(t.usage, `#/list${qs({ lane: "all", tool: t.id })}`) : h("span", { class: "muted" }, "Not used yet")),
+                ),
+                h("td", null, toolHandles(t)),
                 h("td", null, updates(t)),
-                h("td", null, used(t.usage, `#/list${qs({ lane: "all", tool: t.id })}`)),
-                h("td", null, t.enabled ? "enabled" : "disabled"),
                 canEdit()
                   ? h(
                       "td",
-                      null,
+                      { class: "nowrap" },
                       h("a", { class: "link", href: `#/tools/tool${qs({ id: t.id })}` }, "Edit"),
                       " · ",
                       h("button", { class: "link", onclick: async () => (await act(() => api("POST", `tools/${t.id}/enabled`, { enabled: !t.enabled }), t.enabled ? "Tool disabled" : "Tool enabled")) && refresh() }, t.enabled ? "Disable" : "Enable"),
@@ -1384,6 +1421,15 @@ function toolFormPage({ url, tool }) {
       tool ? null : h("div", { class: "radios" }, kindRadio("manual", "Any website, updated by hand"), kindRadio("consul", "A Consul Democracy instance (followed automatically)")),
       field("Tool name", name),
       field("What is it useful for?", description, "Optional. Shown in the tool list and when someone links a process, to help pick the right tool."),
+      auto
+        ? h(
+            "div",
+            { class: "field" },
+            h("span", { class: "label" }, "Links accepted"),
+            toolLinksDetail(tool),
+            h("span", { class: "hint" }, "A built-in reader understands these links, so they can't be changed. To accept other links, add a separate tool."),
+          )
+        : null,
       manualBox,
       consulBox,
       h("div", { class: "row" }, btn),

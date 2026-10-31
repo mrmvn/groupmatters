@@ -50,6 +50,9 @@ export function normalizePost(p: any): F {
 
 export const metaculus: Adapter = {
   id: "metaculus",
+  retrieves: {
+    question: ["title", "status (with the resolution)", "dates (opening, closing, resolution)", "forecasters", "forecasts", "comments"],
+  },
   available: (ctx) => !!ctx.config.metaculusToken,
   parse(url) {
     const m = RE.exec(url);

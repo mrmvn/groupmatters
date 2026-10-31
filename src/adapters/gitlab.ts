@@ -53,6 +53,10 @@ export function normalizeIssue(d: any): F {
 
 export const gitlab: Adapter = {
   id: "gitlab",
+  retrieves: {
+    merge_request: ["title", "status", "dates", "last activity", "author", "comments"],
+    issue: ["title", "status", "dates", "last activity", "author", "comments", "up/down votes"],
+  },
   parse(url, ctx) {
     const m = RE.exec(url);
     if (!m) return null;

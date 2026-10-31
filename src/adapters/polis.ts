@@ -39,6 +39,9 @@ const headers = { Accept: "application/json", "User-Agent": "question-register" 
 
 export const polis: Adapter = {
   id: "polis",
+  retrieves: {
+    conversation: ["title", "status", "dates", "last activity", "participants", "report link"],
+  },
   parse(url): Parsed | null {
     const m = RE.exec(url);
     if (!m) return null;

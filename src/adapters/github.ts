@@ -72,6 +72,10 @@ function check(status: number, json: any, h: Headers) {
 
 export const github: Adapter = {
   id: "github",
+  retrieves: {
+    pull_request: ["title", "status", "dates", "last activity", "author", "comments"],
+    issue: ["title", "status (with the closing reason)", "dates", "last activity", "author", "comments"],
+  },
   parse(url) {
     const m = RE.exec(url);
     if (!m) return null;

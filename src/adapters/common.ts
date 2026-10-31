@@ -12,6 +12,8 @@ export type FetchResult =
 
 export interface Adapter {
   id: string;
+  /** What is retrieved besides the link's own item type, in plain words, per item type. Shown on the Tools page. */
+  retrieves: Record<string, string[]>;
   /** Extract identifiers from an already-matched URL. No network. */
   parse(url: string, ctx: Ctx): Parsed | null;
   /** Whether the adapter can run with this configuration (e.g. needs an API token). Default: yes. */
