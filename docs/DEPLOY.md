@@ -15,7 +15,7 @@ The register is a single Node process with a single SQLite file. It needs no oth
 | `PORT` | `3000` | Listen port |
 | `HOST` | `127.0.0.1` | Listen address (use `0.0.0.0` in a container) |
 | `DB_PATH` | `data/register.sqlite` | SQLite file |
-| `PUBLIC_URL` | `http://localhost:$PORT` | Base URL used when printing links and in the Atom feed |
+| `PUBLIC_URL` | `http://localhost:$PORT` | Base URL used when printing links and in the Atom and calendar feeds |
 | `GITHUB_TOKEN` | — | Optional. Raises GitHub's limit from 60 to 5,000 requests/h. A fine-grained token with **no** permissions is enough for public repos |
 | `GITLAB_TOKEN` | — | Optional, gitlab.com only |
 | `GITLAB_HOSTS` | — | Comma-separated self-hosted GitLab hosts the server may call, e.g. `git.example.org` |
@@ -143,7 +143,7 @@ For a portable, human-readable copy, also keep the JSON export of each space.
 ## Security notes
 
 - Every response carries `Referrer-Policy: no-referrer`, a strict CSP, `Cross-Origin-Resource-Policy: same-origin` and, when `PUBLIC_URL` is https, `Strict-Transport-Security`. External links use `rel="noopener noreferrer"`.
-- The Atom feed only works with the **view** link (feed readers are often cloud services, and entry links contain the token).
+- The Atom feed and the ICS calendar only work with the **view** link (feed readers are often cloud services, and entry links contain the token).
 - Writes with a cross-origin `Origin` header (including `Origin: null`) are refused. Writes and reads are rate-limited per link.
 - Only tokens' SHA-256 hashes are stored. A lost link can't be recovered, only rotated.
 - All outbound requests go through one function (`src/net.ts`): https only, redirects followed by hand and checked **before** each hop is requested, response size capped while reading (2 MB for APIs).

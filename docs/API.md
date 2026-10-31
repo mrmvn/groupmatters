@@ -66,4 +66,8 @@ Questions returned by the API (detail, list, export) carry `fields: {field: {val
 
 ## Atom feed
 
-`GET /feed/<view-token>.atom` returns the last 50 events. Only the view link works (404 with the edit link): feed readers are often third-party services, and entry links contain the token.
+`GET /feed/<view-token>.atom` returns the last 50 events.
+
+## Calendar (ICS)
+
+`GET /feed/<view-token>.ics` returns an iCalendar (RFC 5545) subscription with each non-removed matter's start and end dates (typed or retrieved, as on the timeline): one event "Starts: <title>" and one "Ends: <title>" (a single one when both are the same). Whole days are all-day events; moments are zero-length UTC events. Events are marked as free time (`TRANSP:TRANSPARENT`), and each links back to the matter. `UID`s are stable (`<matter-id>-start|end@<host>`), so calendar apps update events in place. Only the view link works (404 with the edit link): feed readers are often third-party services, and entry links contain the token. Same for the calendar below.

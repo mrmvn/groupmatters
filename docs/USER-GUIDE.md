@@ -10,7 +10,7 @@
 
 - Open the link you were given. The **edit link** lets you change things; the **view link** is read-only. Keep the edit link within the group.
 - The first time, you'll be asked for a **display name**. Use the name people know you by. Names aren't checked.
-- It works on a phone. You can add the page to your home screen.
+- It works on a phone. To get an icon on your home screen: **Share → Add to Home Screen** (iPhone, Safari) or **⋮ → Add to Home screen / Install app** (Android, Chrome). Do it from the link you use: the icon opens that space with that link, so treat the phone as holding it. Several spaces can each have their own icon.
 
 ## Statuses
 

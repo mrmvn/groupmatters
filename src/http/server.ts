@@ -10,6 +10,7 @@ import { looksLikeToken, hashToken } from "../tokens.ts";
 import { validateActorName } from "../permissions.ts";
 import { handleApi } from "./api.ts";
 import { atomFeed } from "../feed.ts";
+import { calendarFeed } from "../calendar.ts";
 import { HttpError } from "../util.ts";
 
 const PUBLIC_DIR = fileURLToPath(new URL("../../public/", import.meta.url));
@@ -146,13 +147,16 @@ async function routeInner(ctx: Ctx, req: Req): Promise<Res> {
     return file("index.html", false);
   }
 
-  // Atom feed
-  if (method === "GET" && segs[0] === "feed" && segs.length === 2 && segs[1].endsWith(".atom")) {
-    const token = segs[1].slice(0, -5);
+  // Atom feed and ICS calendar
+  const feed = method === "GET" && segs[0] === "feed" && segs.length === 2 ? /^([A-Za-z0-9_-]+)\.(atom|ics)$/.exec(segs[1]) : null;
+  if (feed) {
+    const [, token, ext] = feed;
     const found = looksLikeToken(token) ? repo.findSpaceByToken(ctx.db, token) : undefined;
-    // View links only: feed readers are often cloud services, and entry links embed the token.
+    // View links only: feed readers and calendars are often cloud services, and entry links embed the token.
     if (!found || found.role !== "view") throw new HttpError(404, "not_found", "Not found");
-    return { status: 200, headers: { "Content-Type": "application/atom+xml; charset=utf-8", "Cache-Control": "no-store" }, body: atomFeed(ctx, found.space, token) };
+    return ext === "atom"
+      ? { status: 200, headers: { "Content-Type": "application/atom+xml; charset=utf-8", "Cache-Control": "no-store" }, body: atomFeed(ctx, found.space, token) }
+      : { status: 200, headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-store" }, body: calendarFeed(ctx, found.space, token) };
   }
 
   // JSON API

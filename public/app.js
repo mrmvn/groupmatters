@@ -1227,8 +1227,17 @@ async function pageActivity() {
     h("h1", null, "Activity"),
     h("p", { class: "muted" }, "Every change in this space, newest first. The log can't be edited."),
     S.role === "view"
-      ? h("p", null, "Subscribe in a feed reader: ", h("a", { href: `/feed/${TOKEN}.atom` }, "Atom feed"), h("span", { class: "muted small" }, " (contains this view link: share with care)"))
-      : h("p", { class: "muted small" }, "An Atom feed is available from the view link (open the space with it and come back here)."),
+      ? h(
+          "p",
+          null,
+          "Subscribe in a feed reader: ",
+          h("a", { href: `/feed/${TOKEN}.atom` }, "Atom feed"),
+          ". Start and end dates in your calendar app: ",
+          h("a", { href: `/feed/${TOKEN}.ics` }, "calendar (ICS)"),
+          " (copy the link and add it as a subscription).",
+          h("span", { class: "muted small" }, " Both contain this view link: share with care."),
+        )
+      : h("p", { class: "muted small" }, "An Atom feed and a calendar of start and end dates are available from the view link (open the space with it and come back here)."),
     h("section", { class: "panel" }, list, more),
   );
 }

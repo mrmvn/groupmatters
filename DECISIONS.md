@@ -38,6 +38,8 @@ Choices made where the spec says **(decide)** or is silent, with short rationale
 - **Link rotation**: CLI command `rotate-link <space-id> edit|view`, logged as `link.rotated` by `operator`.
 - **Space creation**: CLI only (`create-space`), which prints both links once. No public creation page, so nobody can create spaces on a pilot server without the operator.
 - **Atom feed**: included at `/feed/<token>.atom` (last 50 events). The UI only offers it with the view link, so the edit link doesn't end up in feed readers.
+- **Calendar**: `/feed/<view-token>.ics`, view link only. One event per date ("Starts: …", "Ends: …") rather than one event spanning the whole process, which would cover weeks of a calendar. Events are "free" time. Removed matters are left out.
+- **Installable (PWA)**: a static manifest with no `start_url` or `id`, so both default to the page it's installed from (`/s/<token>`): each space installs as its own app and the token isn't in any shared file. No service worker (no offline mode); not needed for installing on current browsers.
 - **REST shape**: see `docs/API.md`.
 - **CSP**: strict. `default-src 'self'`, no inline scripts or styles, `frame-ancestors 'none'`, `Referrer-Policy: no-referrer`.
 
@@ -60,7 +62,7 @@ Choices made where the spec says **(decide)** or is silent, with short rationale
 - **Manual tools** get an optional "link to results" (`extra.results_url`), which covers the Polis report link.
 - **GitLab self-hosted instances** are only fetched when the operator lists their host in `GITLAB_HOSTS` (an SSRF guard). Otherwise the URL is treated as unmatched.
 - **Markdown** (charter, synthesis) is rendered by a small built-in renderer that builds DOM nodes and never passes HTML through, instead of a sanitizer library.
-- **Security extras**: tokens are 256-bit and stored as SHA-256 hashes (their high entropy makes a slow KDF unnecessary), compared with `timingSafeEqual`. Writes are rate-limited (120/min per token, in memory), reads more loosely (600/min); past 10,000 tokens the least recently seen are forgotten. Cross-origin writes are refused by an `Origin` check (`Origin: null` counts as cross-origin). The Atom feed only accepts view links. HSTS (with an https `PUBLIC_URL`) and `Cross-Origin-Resource-Policy: same-origin` on every response. Request logs redact tokens.
+- **Security extras**: tokens are 256-bit and stored as SHA-256 hashes (their high entropy makes a slow KDF unnecessary), compared with `timingSafeEqual`. Writes are rate-limited (120/min per token, in memory), reads more loosely (600/min); past 10,000 tokens the least recently seen are forgotten. Cross-origin writes are refused by an `Origin` check (`Origin: null` counts as cross-origin). The Atom feed and calendar only accept view links. HSTS (with an https `PUBLIC_URL`) and `Cross-Origin-Resource-Policy: same-origin` on every response. Request logs redact tokens.
 - **Date criteria** are entered in the browser's local time and stored in UTC.
 
 ## Simplification pass (post-v0)

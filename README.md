@@ -23,7 +23,7 @@ Create a real space with `node src/cli.ts create-space "Our group"`. It prints a
 - One process per question: a link from the space's **tool list**, or a **custom** process (a meeting, an unconference…) with or without a link. GitHub, GitLab, public Loomio polls/threads, Polis, OpaVote, Decidim (any instance) and Consul Democracy (per instance) are fetched automatically (state, results, last activity); Metaculus too with an API token. Other tools are updated by hand, with the page title used to prefill questions. See `docs/TOOLS.md`.
 - A **dashboard** (in the top-right menu): prototype widgets of fixed sizes for tools, statuses, momentum, attention and recent answers, each hideable (collective numbers only: no individual rankings).
 - A **Tools** page (tool list, status labels, editable by anyone with edit access), **How this works** (the charter), the activity log and export, from the top-right menu.
-- An append-only **activity log** (enforced by database triggers), "changed since your last visit", an Atom feed and a full JSON export.
+- An append-only **activity log** (enforced by database triggers), "changed since your last visit", an Atom feed, an ICS calendar of start/end dates and a full JSON export. Installable on phones (web app manifest).
 - Access by secret link plus a display name; no accounts.
 
 The v0 decision model (adopt, resolution criteria, objection windows, stewards, active cap, dormancy, Rules proposals) was removed to keep things simple; see `DECISIONS.md`.

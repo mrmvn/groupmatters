@@ -8,6 +8,12 @@
   <title>Group Matters</title>
   <link rel="stylesheet" href="/assets/style.css">
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <!-- No start_url or id in the manifest on purpose: both then default to this page's URL, so the
+       installed app opens the space it was added from, and the token isn't baked into a shared file. -->
+  <link rel="manifest" href="/assets/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <meta name="theme-color" content="#2f5d50">
+  <meta name="apple-mobile-web-app-title" content="Matters">
   <script type="module" src="/assets/app.js"></script>
 </head>
 <body>
