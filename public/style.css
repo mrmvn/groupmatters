@@ -96,6 +96,7 @@ legend { font-weight: 600; font-size: .9rem; padding: 0 4px; }
 /* composer */
 .composer input#composer-input, .composer > input { font-size: 1.1rem; padding: 12px; }
 .composer-panel:not(:empty) { margin-top: 10px; }
+.composer-prompt { margin: 0 0 8px; }
 .composer textarea { margin-top: 8px; }
 .link-preview { padding: 8px 10px; background: var(--bg); border-radius: 8px; }
 .notice { background: var(--bg); border-left: 4px solid var(--warn); padding: 8px 12px; border-radius: 6px; }

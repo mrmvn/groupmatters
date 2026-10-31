@@ -172,6 +172,21 @@ test("rules pages and activity render", async () => {
   assert.match((await go("#/activity")).textContent!, /added the question/);
 });
 
+test("composer: a prompt line shows while the bar is idle and hides once you type", async () => {
+  const main = await go("#/list?lane=current");
+  const prompt = main.querySelector(".composer-prompt") as any;
+  assert.ok(prompt, "a line above the add bar");
+  assert.ok(prompt.textContent!.trim().length > 0);
+  assert.ok(!prompt.hidden, "shown while idle");
+  const input = document.getElementById("composer-input") as any;
+  input.value = "Something on our minds";
+  input.dispatchEvent(new window.Event("input"));
+  assert.ok(prompt.hidden, "hidden once there's text");
+  input.value = "";
+  input.dispatchEvent(new window.Event("input"));
+  assert.ok(!prompt.hidden, "back when idle again");
+});
+
 test("flow: type a question in the composer and add it", async () => {
   await go("#/list?lane=current");
   const input = document.getElementById("composer-input") as any;

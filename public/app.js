@@ -15,6 +15,7 @@ import { renderMarkdown } from "./md.js";
 import { fieldCell, createFields, retrievedFromPreview, FIELD_LABEL } from "./fields.js";
 import { timelineChart } from "./timeline.js";
 import { dashboardPage } from "./dashboard.js";
+import { promptOfSession } from "./prompts.js";
 
 const app = document.getElementById("app");
 const S = { space: null, role: "view", tools: [], counts: {}, since: null };
@@ -436,6 +437,8 @@ function composer(opts = {}) {
       opts.relateTo && x.id !== opts.relateTo && !opts.exclude?.has(x.id) ? [" · ", h("button", { type: "button", class: "link", onclick: () => opts.onRelate(x) }, "Relate it instead")] : null,
     );
   const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Name or link your process", autocomplete: "off", "aria-label": "Name or link your process" });
+  // A line above the bar, only while it's idle (hidden as soon as there's text). On the main bar only.
+  const prompt = opts.relateTo ? null : h("p", { class: "composer-prompt muted small" }, promptOfSession());
   const panel = h("div", { class: "composer-panel" });
   let mode = "idle"; // idle | text | link
   let preview = null;
@@ -526,6 +529,7 @@ function composer(opts = {}) {
 
   input.addEventListener("input", () => {
     const v = input.value.trim();
+    if (prompt) prompt.hidden = v.length > 0;
     if (/^https?:\/\//i.test(v)) {
       if (/^http:\/\//i.test(v)) {
         mode = "idle";
@@ -582,6 +586,7 @@ function composer(opts = {}) {
         }
       },
     },
+    prompt,
     input,
     panel,
   );
