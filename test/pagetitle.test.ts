@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeCtx } from "./helpers.ts";
-import { extractTitle, fetchPageTitle, isGenericTitle, isPrivateAddress } from "../src/pagetitle.ts";
+import { extractTitle, fetchPageTitle, isGenericTitle } from "../src/pagetitle.ts";
+import { isPrivateAddress } from "../src/net.ts";
 
 const html = (head: string) => ({ body: `<!doctype html><html><head>${head}</head><body></body></html>`, headers: { "content-type": "text/html; charset=utf-8" } });
 

@@ -9,7 +9,7 @@ import type { Adapter, FetchResult, Parsed } from "./common.ts";
 import { AdapterError, clip, compact, getJson, iso, tolerantQuery } from "./common.ts";
 import type { Ctx } from "../ctx.ts";
 import type { Fetched, NormalizedState } from "../types.ts";
-import { hostIsPublic } from "../pagetitle.ts";
+import { hostIsPublic } from "../net.ts";
 
 const RE =
   /^https:\/\/([a-z0-9.-]+)\/(processes|assemblies|conferences|initiatives)\/([A-Za-z0-9_-]{1,100})(?:\/f\/(\d{1,10})\/(proposals|debates|meetings)\/(\d{1,12}))?\/?(?:[?#]|$)/i;

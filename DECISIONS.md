@@ -60,7 +60,7 @@ Choices made where the spec says **(decide)** or is silent, with short rationale
 - **Manual tools** get an optional "link to results" (`extra.results_url`), which covers the Polis report link.
 - **GitLab self-hosted instances** are only fetched when the operator lists their host in `GITLAB_HOSTS` (an SSRF guard). Otherwise the URL is treated as unmatched.
 - **Markdown** (charter, synthesis) is rendered by a small built-in renderer that builds DOM nodes and never passes HTML through, instead of a sanitizer library.
-- **Security extras**: tokens are 256-bit and stored as SHA-256 hashes (their high entropy makes a slow KDF unnecessary), compared with `timingSafeEqual`. Writes are rate-limited (120/min per token, in memory). Cross-origin writes are refused by an `Origin` check. Request logs redact tokens.
+- **Security extras**: tokens are 256-bit and stored as SHA-256 hashes (their high entropy makes a slow KDF unnecessary), compared with `timingSafeEqual`. Writes are rate-limited (120/min per token, in memory), reads more loosely (600/min); past 10,000 tokens the least recently seen are forgotten. Cross-origin writes are refused by an `Origin` check (`Origin: null` counts as cross-origin). The Atom feed only accepts view links. HSTS (with an https `PUBLIC_URL`) and `Cross-Origin-Resource-Policy: same-origin` on every response. Request logs redact tokens.
 - **Date criteria** are entered in the browser's local time and stored in UTC.
 
 ## Simplification pass (post-v0)
@@ -87,7 +87,7 @@ Choices made where the spec says **(decide)** or is silent, with short rationale
 - **Fallback to updating by hand.** Adapters raise `manualFallback` for items that exist but can't be read (401/403, missing token). On attach the process is stored as manual with the reason; on refresh it switches to manual and logs `process.now_manual`. Tools whose adapter isn't usable on this server (Metaculus without a token) behave as manual; the API marks them `auto_unavailable`.
 - **Loomio outcome**: closed polls are `concluded` unless the poll template defines a pass test (`results[].test_result`), since Loomio has no general "passed" flag. The facilitator's outcome statement, or the per-option results, become the summary.
 - **Last activity**: GitHub/GitLab `updated_at`, Loomio thread `last_activity_at`, Polis `modified` (last vote, in µs). Metaculus has none.
-- **Title pre-fill for manual tools** fetches the page and reads `og:title`/`twitter:title`/`<title>` (`src/pagetitle.ts`). Guarded against SSRF: https, port 443, public addresses only (DNS resolved and checked at every redirect hop, redirects followed by hand), 512 KB, 8 s. Generic titles (site name, login walls, bot challenges) are discarded. Kialo and Metaculus pages give nothing useful (login wall / bot challenge).
+- **Title pre-fill for manual tools** fetches the page and reads `og:title`/`twitter:title`/`<title>` (`src/pagetitle.ts`). Guarded against SSRF by `safeFetch` (`src/net.ts`), which adapters use too (redirects by hand, same host only, body capped while reading): https, port 443, public addresses only (DNS resolved and checked at every redirect hop, redirects followed by hand), 512 KB, 8 s. Generic titles (site name, login walls, bot challenges) are discarded. Kialo and Metaculus pages give nothing useful (login wall / bot challenge).
 
 ## Duplicates and removal (migration 4)
 

@@ -14,6 +14,7 @@ export type Config = {
   /** Interval for criteria evaluation and refresh scheduling. */
   tickMs: number;
   writeRateLimitPerMinute: number;
+  readRateLimitPerMinute: number;
 };
 
 export type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
@@ -41,6 +42,7 @@ export function loadConfig(env = process.env): Config {
     gitlabHosts: ["gitlab.com", ...(env.GITLAB_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)],
     tickMs: Number(env.TICK_MS ?? 15 * 60 * 1000),
     writeRateLimitPerMinute: Number(env.WRITE_RATE_LIMIT ?? 120),
+    readRateLimitPerMinute: Number(env.READ_RATE_LIMIT ?? 600),
   };
 }
 

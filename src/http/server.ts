@@ -35,7 +35,13 @@ export const SECURITY_HEADERS: Record<string, string> = {
   "X-Frame-Options": "DENY",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Cross-Origin-Resource-Policy": "same-origin",
 };
+
+/** The fixed headers, plus HSTS when the public URL is https (browsers ignore it over http anyway). */
+export function securityHeaders(ctx: Ctx): Record<string, string> {
+  return ctx.config.publicUrl.startsWith("https://") ? { ...SECURITY_HEADERS, "Strict-Transport-Security": "max-age=31536000" } : SECURITY_HEADERS;
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -88,14 +94,39 @@ function parseBody(req: Req): any {
   }
 }
 
-// Per-token write rate limit (sliding one-minute window).
+// Per-token rate limits (sliding one-minute window), one map for writes and one for reads.
+// Map order is least recently used first: past MAX_KEYS, the oldest keys are dropped (not everyone's).
+const MAX_KEYS = 10_000;
 const writes = new Map<string, number[]>();
-function rateLimit(key: string, perMinute: number, now: number) {
-  const arr = (writes.get(key) ?? []).filter((t) => now - t < 60_000);
-  if (arr.length >= perMinute) throw new HttpError(429, "rate_limited", "Too many changes in a short time; wait a minute");
+const reads = new Map<string, number[]>();
+export function rateLimit(map: Map<string, number[]>, key: string, perMinute: number, now: number, message: string) {
+  const arr = (map.get(key) ?? []).filter((t) => now - t < 60_000);
+  if (arr.length >= perMinute) throw new HttpError(429, "rate_limited", message);
   arr.push(now);
-  writes.set(key, arr);
-  if (writes.size > 10_000) writes.clear();
+  map.delete(key);
+  map.set(key, arr);
+  for (const k of map.keys()) {
+    if (map.size <= MAX_KEYS) break;
+    map.delete(k);
+  }
+}
+
+/** Same-origin check for writes. A missing Origin is allowed (non-browser clients); `null` or garbage isn't. */
+function sameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (origin === undefined || !host) return true;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false; // "null" (sandboxed iframes, some privacy modes) or unparseable
+  }
+}
+
+function decodeSegment(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    throw new HttpError(400, "bad_request", "Malformed address");
+  }
 }
 
 export const redact = (url: string) => url.replace(/\/(s|feed)\/[A-Za-z0-9_-]{20,}/, "/$1/[token]");
@@ -119,7 +150,8 @@ async function routeInner(ctx: Ctx, req: Req): Promise<Res> {
   if (method === "GET" && segs[0] === "feed" && segs.length === 2 && segs[1].endsWith(".atom")) {
     const token = segs[1].slice(0, -5);
     const found = looksLikeToken(token) ? repo.findSpaceByToken(ctx.db, token) : undefined;
-    if (!found) throw new HttpError(404, "not_found", "Not found");
+    // View links only: feed readers are often cloud services, and entry links embed the token.
+    if (!found || found.role !== "view") throw new HttpError(404, "not_found", "Not found");
     return { status: 200, headers: { "Content-Type": "application/atom+xml; charset=utf-8", "Cache-Control": "no-store" }, body: atomFeed(ctx, found.space, token) };
   }
 
@@ -131,14 +163,15 @@ async function routeInner(ctx: Ctx, req: Req): Promise<Res> {
       if (!found) throw new HttpError(404, "not_found", "Unknown or revoked link");
       if (method !== "GET") {
         // CSRF defence in depth: refuse cross-origin writes when the browser tells us the origin.
-        const origin = req.headers.origin;
-        if (origin && req.headers.host && new URL(origin).host !== req.headers.host)
-          throw new HttpError(403, "forbidden", "Cross-origin request refused");
-        rateLimit(hashToken(token), ctx.config.writeRateLimitPerMinute, Date.now());
+        if (!sameOrigin(req.headers.origin, req.headers.host)) throw new HttpError(403, "forbidden", "Cross-origin request refused");
+        rateLimit(writes, hashToken(token), ctx.config.writeRateLimitPerMinute, Date.now(), "Too many changes in a short time; wait a minute");
+      } else {
+        // Looser, but export and dashboard are full scans.
+        rateLimit(reads, hashToken(token), ctx.config.readRateLimitPerMinute, Date.now(), "Too many requests in a short time; wait a minute");
       }
       const data = await handleApi(ctx, {
         method,
-        path: segs.slice(3).map(decodeURIComponent),
+        path: segs.slice(3).map(decodeSegment),
         query: url.searchParams,
         body: method === "GET" ? undefined : parseBody(req),
         actor: validateActorName(req.headers["x-actor-name"]),
@@ -162,7 +195,7 @@ export async function route(ctx: Ctx, req: Req): Promise<Res> {
     if (status === 500) console.error(e);
     res = { status, headers: { "Content-Type": "text/plain; charset=utf-8" }, body: status === 404 ? "Not found" : "Error" };
   }
-  res.headers = { ...SECURITY_HEADERS, ...res.headers };
+  res.headers = { ...securityHeaders(ctx), ...res.headers };
   return res;
 }
 
@@ -185,7 +218,7 @@ export function createApp(ctx: Ctx) {
     const headers: Record<string, string | undefined> = {};
     for (const [k, v] of Object.entries(req.headers)) headers[k] = Array.isArray(v) ? v.join(", ") : v;
     const out = tooLarge
-      ? { ...json(413, { error: { code: "too_large", message: "Request body too large" } }), headers: { ...SECURITY_HEADERS, "Content-Type": "application/json" } }
+      ? { ...json(413, { error: { code: "too_large", message: "Request body too large" } }), headers: { ...securityHeaders(ctx), "Content-Type": "application/json" } }
       : await route(ctx, { method: req.method ?? "GET", url: req.url ?? "/", headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
     res.writeHead(out.status, out.headers);
     res.end(req.method === "HEAD" ? undefined : out.body);

@@ -22,6 +22,7 @@ The register is a single Node process with a single SQLite file. It needs no oth
 | `METACULUS_TOKEN` | — | Optional. Metaculus requires an API token for every request; with one, Metaculus links are fetched automatically. Without it they're updated by hand |
 | `TICK_MS` | `900000` | Scheduler interval (refreshing linked items), 15 min |
 | `WRITE_RATE_LIMIT` | `120` | Writes per minute per link |
+| `READ_RATE_LIMIT` | `600` | Reads (API `GET`s) per minute per link |
 | `LOG_REQUESTS` | — | Set to log requests (tokens are redacted) |
 | `NODE_USE_ENV_PROXY` | — | Set to `1` if outbound traffic must go through `HTTPS_PROXY` |
 
@@ -52,11 +53,52 @@ Caddy in front (automatic HTTPS):
 ```
 groupmatters.org {
   reverse_proxy 127.0.0.1:3000
-  header Strict-Transport-Security "max-age=31536000"
+}
+www.groupmatters.org {
+  redir https://groupmatters.org{uri} permanent
 }
 ```
 
-Leave out the `log` directive: access logs would record the secret links (`/s/<token>`).
+The app sends `Strict-Transport-Security` itself when `PUBLIC_URL` starts with `https://`, so the proxy doesn't need to add it.
+
+### Keep the links out of the proxy's logs
+
+Space links are secrets in the URL path (`/s/<token>`, `/api/s/<token>/…`, `/feed/<token>.atom`). Any access log that records the request URI stores them. The app's own log (`LOG_REQUESTS`) redacts them; your reverse proxy doesn't.
+
+**Caddy** writes no access log unless a site has a `log` directive. The simplest choice is to leave it out. If you do want access logs, filter the URI:
+
+```
+groupmatters.org {
+  reverse_proxy 127.0.0.1:3000
+  log {
+    output file /var/log/caddy/groupmatters.log
+    format filter {
+      request>uri regexp "^/(s|feed|api/s)/[A-Za-z0-9_-]+" "/${1}/[token]"
+      request>headers>Referer delete
+    }
+  }
+}
+```
+
+(Caddy before 2.8 needs the filters inside `fields { … }` and a `wrap json` line.)
+
+**nginx** logs every request by default. Either turn it off for the site (`access_log off;`) or log a redacted URI:
+
+```nginx
+# in the http { } block
+map $request_uri $redacted_uri {
+  "~^/(?<p>s|feed|api/s)/[A-Za-z0-9_-]+(?<rest>.*)$"  "/$p/[token]$rest";
+  default                                              $request_uri;
+}
+log_format redacted '$remote_addr - [$time_local] "$request_method $redacted_uri" $status $body_bytes_sent';
+
+# in the server { } block
+access_log /var/log/nginx/groupmatters.log redacted;
+```
+
+nginx's `error_log` can include the request line too; keep it at `error` level or above and rotate it.
+
+Elsewhere, links can still leak through browser history and sync, bookmarks, and screenshots. Treat a link that got out as compromised and rotate it (`rotate-link`).
 
 Run **one instance only**: the scheduler runs in-process.
 
@@ -100,10 +142,13 @@ For a portable, human-readable copy, also keep the JSON export of each space.
 
 ## Security notes
 
-- Every response carries `Referrer-Policy: no-referrer` and a strict CSP. External links use `rel="noopener noreferrer"`.
+- Every response carries `Referrer-Policy: no-referrer`, a strict CSP, `Cross-Origin-Resource-Policy: same-origin` and, when `PUBLIC_URL` is https, `Strict-Transport-Security`. External links use `rel="noopener noreferrer"`.
+- The Atom feed only works with the **view** link (feed readers are often cloud services, and entry links contain the token).
+- Writes with a cross-origin `Origin` header (including `Origin: null`) are refused. Writes and reads are rate-limited per link.
 - Only tokens' SHA-256 hashes are stored. A lost link can't be recovered, only rotated.
+- All outbound requests go through one function (`src/net.ts`): https only, redirects followed by hand and checked **before** each hop is requested, response size capped while reading (2 MB for APIs).
 - Adapters call `api.github.com`, `gitlab.com`, hosts listed in `GITLAB_HOSTS`, `www.loomio.com`, `pol.is`, `opavote.com` and `www.metaculus.com`, plus **Decidim and Consul instances**: any host whose links match (Decidim) or that a space added (Consul), but only after checking that the host resolves to public addresses. The server needs working DNS for that (behind a proxy without local DNS, Decidim/Consul links and title pre-fill fail safely).
-- **Title pre-fill** for manual tools fetches the linked page once when a link is pasted or attached: https only, port 443, public addresses only (DNS checked at every redirect hop), 512 KB, 8 s timeout. Only links matching a tool's patterns are fetched.
+- **Title pre-fill** for manual tools fetches the linked page once when a link is pasted or attached: https only, port 443, public addresses only (DNS checked at every redirect hop), 512 KB, 8 s timeout. Not yet covered: DNS rebinding (a host that resolves to a public address for the check and a private one for the connection). Only links matching a tool's patterns are fetched.
 - Behind an outgoing HTTP proxy, start Node with `NODE_USE_ENV_PROXY=1` so `fetch` uses `HTTPS_PROXY`.
 - **Upgrades**: before a schema migration, the server writes a snapshot next to the database (`register.sqlite.before-vN.bak`).
 - There are no analytics, trackers or third-party assets.

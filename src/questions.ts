@@ -118,6 +118,8 @@ export async function create(ctx: Ctx, space: Space, actor: string, body: any): 
   if (st?.label) q.status_label = st.label;
 
   tx(ctx.db, () => {
+    // Checked again here: the link may have been added while the item was being fetched (S6).
+    if (linkUrl) assertLinkFree(ctx, space, linkUrl);
     repo.insertQuestion(ctx.db, q);
     log(ctx, q, actor, "question.created", {
       title,
@@ -162,9 +164,12 @@ export function updateFields(ctx: Ctx, space: Space, q: Question, actor: string,
 
 /** Attach or replace the process. The status then follows it, when it can be retrieved. */
 export async function attachProcess(ctx: Ctx, space: Space, q: Question, actor: string, body: any): Promise<Question> {
-  assertLinkFree(ctx, space, trimOrUndef(body?.url ?? body?.custom?.url, 2000), q.id);
+  const linkUrl = trimOrUndef(body?.url ?? body?.custom?.url, 2000);
+  assertLinkFree(ctx, space, linkUrl, q.id);
   const prepared = await prepareProcess(ctx, space, body);
   tx(ctx.db, () => {
+    // Checked again here: the link may have been added while the item was being fetched (S6).
+    assertLinkFree(ctx, space, linkUrl, q.id);
     storeProcess(ctx, q, actor, prepared);
     adoptProcess(ctx, space, q, actor, prepared);
     repo.saveQuestion(ctx.db, q);

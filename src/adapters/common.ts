@@ -2,6 +2,7 @@
 // injected fetcher and tokens) and an ETag for conditional requests.
 import type { Ctx } from "../ctx.ts";
 import type { Fetched } from "../types.ts";
+import { FetchRefused, safeFetch } from "../net.ts";
 
 export type Parsed = { item_type: string; ids: Record<string, string> };
 
@@ -50,11 +51,14 @@ export function compact<T extends Record<string, unknown>>(o: T): T {
   return o;
 }
 
-
-
 const MAX_BYTES = 2_000_000;
 
-/** GET a JSON document from a fixed API host. Never follows redirects to another host. */
+/**
+ * GET (or POST, with `body`) a JSON document from a fixed API host. Redirects are followed by hand and
+ * only within `expectedHost` (checked before each hop is requested); the body is read with a size cap.
+ * The host's addresses aren't checked here: fixed hosts are trusted, and adapters for hosts taken
+ * from links (Decidim, Consul) check `hostIsPublic` first.
+ */
 export async function getJson(
   ctx: Ctx,
   url: string,
@@ -62,13 +66,25 @@ export async function getJson(
   expectedHost: string,
   body?: unknown,
 ): Promise<{ status: number; json?: any; headers: Headers }> {
-  const init: RequestInit = { headers, redirect: "follow", signal: AbortSignal.timeout(15_000) };
-  if (body !== undefined) Object.assign(init, { method: "POST", body: JSON.stringify(body), headers: { ...headers, "Content-Type": "application/json" } });
-  const res = await ctx.fetch(url, init);
-  if (res.url && new URL(res.url).hostname !== expectedHost) throw new AdapterError("Unexpected redirect to another host");
-  if (res.status === 304) return { status: 304, headers: res.headers };
-  const text = await res.text();
-  if (text.length > MAX_BYTES) throw new AdapterError("Response too large");
+  let res, text;
+  try {
+    res = await safeFetch(ctx, url, {
+      ...(body !== undefined ? { method: "POST" as const, body: JSON.stringify(body), headers: { ...headers, "Content-Type": "application/json" } } : { headers }),
+      allowedHost: expectedHost,
+      requirePublic: false,
+      standardPortOnly: false,
+      timeoutMs: 15_000,
+      maxBytes: MAX_BYTES,
+    });
+    if (res.status === 304) {
+      res.discard();
+      return { status: 304, headers: res.headers };
+    }
+    text = await res.text();
+  } catch (e) {
+    if (e instanceof FetchRefused) throw new AdapterError(e.message);
+    throw e;
+  }
   let json: any;
   try {
     json = text ? JSON.parse(text) : undefined;

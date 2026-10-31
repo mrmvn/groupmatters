@@ -25,6 +25,7 @@ export type ApiReq = {
   role: Role;
 };
 
+const MAX_ACTIVITY_LIMIT = 500;
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function counts(ctx: Ctx, space: Space) {
@@ -137,7 +138,8 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
   }
   if (method === "GET" && a === "activity" && !id) {
     const before = Number(r.query.get("before")) || undefined;
-    return { activity: repo.listActivity(ctx.db, space.id, { before, limit: Number(r.query.get("limit")) || 100 }) };
+    const limit = Math.min(Number(r.query.get("limit")) || 100, MAX_ACTIVITY_LIMIT);
+    return { activity: repo.listActivity(ctx.db, space.id, { before, limit }) };
   }
   if (method === "GET" && a === "export" && !id) return exportSpace(ctx, space);
   if (method === "GET" && a === "timeline" && !id) {

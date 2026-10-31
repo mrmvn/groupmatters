@@ -32,7 +32,7 @@ Questions returned by the API (detail, list, export) carry `fields: {field: {val
 | `POST tools` | `{name, description?, url_patterns:[{pattern,item_type}]}`, or `{kind: "consul", base_url, name?, description?}` | Adds a tool updated by hand, or an instance of a supported platform (patterns generated, fetched automatically). Custom processes whose link the new tool recognises become its processes (logged as `process.tool_matched`; automatic ones are fetched at once). Returns `{tools}` |
 | `PATCH tools/:id` | `{name, description?, url_patterns}` | Edits a tool (links its new patterns recognise are adopted the same way). Automatic tools (with an adapter): only `name` and `description`; changed `url_patterns` → 400. A missing `description` keeps the current one, `""` clears it (max 400 characters). Returns `{tools}` |
 | `POST tools/:id/enabled` | `{enabled}` | Enables or disables a tool. Returns `{tools}` |
-| `GET activity?before=<id>&limit=<n>` | | Activity log, newest first (max 1000 per page) |
+| `GET activity?before=<id>&limit=<n>` | | Activity log, newest first (max 500 per page) |
 | `GET export` | | Full JSON export (see `EXPORT.md`) |
 | `GET similar?title=…&exclude=<id>` | | Up to 5 similar questions (duplicate hints) |
 | `GET dashboard?you=&since=` | | Summaries for the dashboard, computed from the questions and the activity log (removed questions excluded): `totals`, `by_status`, `tools` (questions per tool or custom kind, with `in_progress` and `ended`), `unused_tools`, `item_types`, `weekly` (12 weeks: `added`, `answered`, `actions`), `streak {current, best}` (weeks in a row with activity), `days_to_answer` (median), `recent_answers`, `you` (matched by display name, case-insensitive; `null` without `you`), `attention`, `milestones`, and `since {changed}` when `since` is given. "Answered" = accepted, rejected or concluded; people exclude `system` and `operator` |
@@ -66,4 +66,4 @@ Questions returned by the API (detail, list, export) carry `fields: {field: {val
 
 ## Atom feed
 
-`GET /feed/<token>.atom` returns the last 50 events.
+`GET /feed/<view-token>.atom` returns the last 50 events. Only the view link works (404 with the edit link): feed readers are often third-party services, and entry links contain the token.

@@ -11,7 +11,7 @@ import type { Adapter, FetchResult, Parsed } from "./common.ts";
 import { AdapterError, clip, compact, getJson, iso, tolerantQuery } from "./common.ts";
 import type { Ctx } from "../ctx.ts";
 import type { Fetched, NormalizedState } from "../types.ts";
-import { hostIsPublic } from "../pagetitle.ts";
+import { hostIsPublic } from "../net.ts";
 
 const RE = /^https:\/\/([a-z0-9.-]+)\/(?:[a-z]{2}(?:-[A-Za-z]{2})?\/)?(proposals|debates|budgets)\/(\d{1,12})(?:[-\w%]*)(?:\/investments\/(\d{1,12})[-\w%]*)?\/?(?:[?#]|$)/;
 
