@@ -1,11 +1,11 @@
 // ICS calendar feed (RFC 5545) of the matters' start and end dates (F4). Served from the view link
-// only, like the Atom feed. Each date is its own event ("Starts: …", "Ends: …") rather than one event
-// spanning months, which would clutter a calendar. Whole days stay all-day events; moments are
-// zero-length events in UTC. Removed matters are left out.
+// only, like the Atom feed. One event per matter, spanning start to end. If only one date is known,
+// the other is "now" (so an open matter grows until it gets an end date). Whole days stay all-day
+// events; anything with a moment is in UTC. Removed matters are left out.
 import type { Ctx } from "./ctx.ts";
 import type { Question, Space } from "./types.ts";
 import * as repo from "./repo.ts";
-import { effectiveDates, isDay, labelFor } from "./fields.ts";
+import { effectiveDates, isDay, labelFor, lowerBound, upperBound } from "./fields.ts";
 
 type DateValue = string;
 
@@ -39,22 +39,33 @@ function nextDay(v: string): string {
   return day(d.toISOString().slice(0, 10));
 }
 
-function dateLines(v: DateValue): string[] {
-  return isDay(v) ? [`DTSTART;VALUE=DATE:${day(v)}`, `DTEND;VALUE=DATE:${nextDay(v)}`] : [`DTSTART:${stamp(v)}`];
+/** The event's span. Both ends known: that span. One known: the other is "now" (clamped, so the span never runs backwards). */
+function span(start: DateValue | undefined, end: DateValue | undefined, now: Date): [DateValue, DateValue] {
+  const known = (start ?? end)!;
+  const cur = isDay(known) ? now.toISOString().slice(0, 10) : now.toISOString();
+  if (start && end) return [start, end];
+  if (start) return [start, upperBound(cur) < lowerBound(start) ? start : cur];
+  return [upperBound(cur) > upperBound(end!) ? end! : cur, end!];
 }
 
-function event(ctx: Ctx, space: Space, q: Question, which: "start" | "end", v: DateValue, base: string, host: string): string[] {
+function dateLines(start: DateValue, end: DateValue): string[] {
+  if (isDay(start) && isDay(end)) return [`DTSTART;VALUE=DATE:${day(start)}`, `DTEND;VALUE=DATE:${nextDay(end)}`];
+  const s = lowerBound(start);
+  const e = isDay(end) ? `${nextDay(end).replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3")}T00:00:00.000Z` : end;
+  return s === e ? [`DTSTART:${stamp(s)}`] : [`DTSTART:${stamp(s)}`, `DTEND:${stamp(e)}`];
+}
+
+function event(ctx: Ctx, space: Space, q: Question, start: DateValue, end: DateValue, base: string, host: string): string[] {
   const status = q.status_label ?? labelFor(space, q.status);
   const url = `${base}#/q/${q.id}`;
-  const summary = which === "start" ? `Starts: ${q.title}` : `Ends: ${q.title}`;
   const desc = [`Status: ${status}`, q.process?.url ? `Process: ${q.process.url}` : "", q.why_it_matters ?? "", url].filter(Boolean).join("\n");
   return [
     "BEGIN:VEVENT",
-    `UID:${q.id}-${which}@${host}`,
+    `UID:${q.id}@${host}`,
     `DTSTAMP:${stamp(ctx.now().toISOString())}`,
     `LAST-MODIFIED:${stamp(new Date(q.last_activity_at).toISOString())}`,
-    ...dateLines(v),
-    `SUMMARY:${icsText(summary)}`,
+    ...dateLines(start, end),
+    `SUMMARY:${icsText(q.title)}`,
     `DESCRIPTION:${icsText(desc)}`,
     `URL:${url}`,
     "TRANSP:TRANSPARENT", // shows as free: these are reminders, not meetings
@@ -78,9 +89,9 @@ export function calendarFeed(ctx: Ctx, space: Space, token: string): string {
   ];
   for (const q of repo.listQuestions(ctx.db, space.id)) {
     const { start, end } = effectiveDates(q);
-    if (start) lines.push(...event(ctx, space, q, "start", start.value, base, host));
-    // Same value as the start: one event is enough.
-    if (end && end.value !== start?.value) lines.push(...event(ctx, space, q, "end", end.value, base, host));
+    if (!start && !end) continue;
+    const [from, to] = span(start?.value, end?.value, ctx.now());
+    lines.push(...event(ctx, space, q, from, to, base, host));
   }
   lines.push("END:VCALENDAR");
   return lines.map(fold).join("\r\n") + "\r\n";

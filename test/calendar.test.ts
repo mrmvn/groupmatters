@@ -9,7 +9,7 @@ import * as Q from "../src/questions.ts";
 
 const get = (ctx: any, url: string) => route(ctx, { method: "GET", url, headers: { host: "register.test" } });
 
-test("ICS: one event per date, all-day for days, UTC for moments, view link only, removed left out", async () => {
+test("ICS: one event per matter spanning start to end, all-day for days, UTC for moments, view link only, removed left out", async () => {
   const t = makeCtx();
   const { space, editToken, viewToken } = makeSpace(t.ctx);
   const a = await Q.create(t.ctx, space, "Ana", { title: "Budget, 2026; final", fields: { start: "2026-03-01", end: "2026-03-15" } });
@@ -26,11 +26,10 @@ test("ICS: one event per date, all-day for days, UTC for moments, view link only
   assert.ok(ics.startsWith("BEGIN:VCALENDAR\r\n") && ics.endsWith("END:VCALENDAR\r\n"));
   assert.ok(!/[^\r]\n/.test(ics), "CRLF line endings");
   const unfolded = ics.replace(/\r\n /g, "");
-  assert.equal(unfolded.match(/BEGIN:VEVENT/g)?.length, 3);
-  assert.match(unfolded, /SUMMARY:Starts: Budget\\, 2026\\; final/);
-  assert.match(unfolded, new RegExp(`UID:${a.id}-start@test\\r\\nDTSTAMP:\\d{8}T\\d{6}Z\\r\\nLAST-MODIFIED:\\d{8}T\\d{6}Z\\r\\nDTSTART;VALUE=DATE:20260301\\r\\nDTEND;VALUE=DATE:20260302`));
-  assert.match(unfolded, /DTSTART;VALUE=DATE:20260315\r\nDTEND;VALUE=DATE:20260316/, "end day");
-  assert.match(unfolded, /DTSTART:20260402T183000Z\r\nSUMMARY:Starts: Vote opens/);
+  assert.equal(unfolded.match(/BEGIN:VEVENT/g)?.length, 2);
+  assert.match(unfolded, /SUMMARY:Budget\\, 2026\\; final/);
+  assert.match(unfolded, new RegExp(`UID:${a.id}@test\\r\\nDTSTAMP:\\d{8}T\\d{6}Z\\r\\nLAST-MODIFIED:\\d{8}T\\d{6}Z\\r\\nDTSTART;VALUE=DATE:20260301\\r\\nDTEND;VALUE=DATE:20260316`));
+  assert.match(unfolded, /DTSTART:20260402T183000Z\r\nDTEND:\d{8}T\d{6}Z\r\nSUMMARY:Vote opens|DTSTART:20260402T183000Z\r\nSUMMARY:Vote opens/, "start only: runs to now, or a point if still in the future");
   assert.match(unfolded, new RegExp(`URL:http://test/s/${viewToken}#/q/${a.id}`));
   assert.ok(!unfolded.includes("Removed one") && !unfolded.includes("No dates"));
   assert.ok(ics.split("\r\n").every((l) => Buffer.byteLength(l) <= 75), "folded at 75 octets");
