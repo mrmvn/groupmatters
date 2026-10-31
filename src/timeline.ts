@@ -6,6 +6,8 @@ import { effectiveDates, lowerBound } from "./fields.ts";
 
 type EffectiveDate = { value: string; source: "typed" | "retrieved" };
 import { list } from "./search.ts";
+import { arrange } from "./relations.ts";
+import * as repo from "./repo.ts";
 
 export type TimelineItem = {
   id: string;
@@ -16,10 +18,13 @@ export type TimelineItem = {
   start: EffectiveDate;
   /** Absent: not known yet (a running question is drawn up to today; an ended one with an "end unknown" mark). */
   end?: EffectiveDate;
+  /** With `hierarchy=1`: how deep under its parent (0: top), and that parent when it's on the timeline. */
+  depth?: number;
+  parent_id?: string;
 };
 
 export function timeline(ctx: Ctx, space: Space, filters: Record<string, string | undefined>): { items: TimelineItem[]; undated: number } {
-  const items: TimelineItem[] = [];
+  let items: TimelineItem[] = [];
   let undated = 0;
   for (const q of list(ctx, space, filters)) {
     const { start, end } = effectiveDates(q);
@@ -42,5 +47,7 @@ export function timeline(ctx: Ctx, space: Space, filters: Record<string, string 
     const x = lowerBound(a.start.value), y = lowerBound(b.start.value);
     return x < y ? -1 : x > y ? 1 : a.title.localeCompare(b.title);
   });
+  // Children follow their parent, each group still in order of start.
+  if (filters.hierarchy === "1") items = arrange(items, repo.listRelations(ctx.db, space.id));
   return { items, undated };
 }

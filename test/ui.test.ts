@@ -516,6 +516,61 @@ test("add an attached link: the tool list with descriptions is offered as a hint
   assert.match(hints.textContent!, /Group decisions/);
 });
 
+test("hierarchy: children nested under their parent in the list and the timeline; relation types on the page; duplicates suggest withdrawing", async () => {
+  const Q = await import("../src/questions.ts");
+  const sp = demo.space;
+  const parent = await Q.create(t.ctx, sp, "Ana", { title: "Treehouse parent" });
+  const kid = await Q.create(t.ctx, sp, "Ana", { title: "Treehouse kid" });
+  const twin = await Q.create(t.ctx, sp, "Ana", { title: "Treehouse twin" });
+  const cousin = await Q.create(t.ctx, sp, "Ana", { title: "Treehouse cousin" });
+  Q.relate(t.ctx, sp, kid, "Ana", { id: parent.id, kind: "child_of" });
+  Q.relate(t.ctx, sp, twin, "Ana", { id: parent.id, kind: "duplicate_of" });
+  Q.relate(t.ctx, sp, cousin, "Ana", { id: kid.id, kind: "related" });
+
+  // List: the kid is nested in its parent's node, with a branch; apart from that, related/duplicate links are mentioned on the cards.
+  const main = await go("#/list?q=Treehouse");
+  const nodes = [...main.querySelectorAll(".cards > .node")] as any[];
+  const parentNode = nodes.find((n) => n.querySelector(".card-title").textContent === "Treehouse parent");
+  assert.deepEqual([...parentNode.querySelectorAll(".cards.children > .node > .card .card-title")].map((a: any) => a.textContent), ["Treehouse kid"]);
+  assert.ok(!main.querySelector(".cards > .node > .card .card-links")?.textContent?.includes("Child of"), "no 'child of' where it's nested");
+  const twinCard = nodes.find((n) => n.querySelector(".card-title").textContent === "Treehouse twin");
+  assert.match(twinCard.querySelector(".card-links").textContent, /Duplicate of Treehouse parent/);
+  const kidCard = parentNode.querySelector(".children .card");
+  assert.match(kidCard.querySelector(".card-links").textContent, /Related to Treehouse cousin/);
+  // Flat on request: nothing nested, parents and children mentioned instead.
+  const flat = await go("#/list?q=Treehouse&flat=1");
+  assert.equal(flat.querySelectorAll(".cards.children").length, 0);
+  assert.match(flat.textContent!, /Child of Treehouse parent/);
+  assert.match(flat.textContent!, /Parent of Treehouse kid/);
+
+  // Question page: every related item with its relation type.
+  const page = await go(`#/q/${kid.id}`);
+  assert.deepEqual([...page.querySelectorAll(".rel-list li")].map((li: any) => [li.querySelector(".rel-kind").textContent.trim(), li.querySelector("a").textContent]), [["Parent:", "Treehouse parent"], ["Related:", "Treehouse cousin"]]);
+  const parentPage = await go(`#/q/${parent.id}`);
+  assert.deepEqual([...parentPage.querySelectorAll(".rel-list li")].map((li: any) => li.querySelector(".rel-kind").textContent.trim()), ["Child:", "Duplicated by:"]);
+  assert.match(parentPage.querySelector(".rel-hint").textContent, /“Treehouse twin” duplicates this question\. Withdraw it/);
+
+  // A duplicate suggests being withdrawn; one click does it (typed, with a note).
+  const twinPage = await go(`#/q/${twin.id}`);
+  const hint = twinPage.querySelector(".rel-hint") as any;
+  assert.match(hint.textContent, /This question duplicates “Treehouse parent”/);
+  hint.querySelector("button").dispatchEvent(new window.Event("click"));
+  await sleep(200);
+  await settle();
+  assert.equal(Q.load(t.ctx, sp, twin.id).status, "withdrawn");
+  assert.equal(document.querySelector("main .rel-hint"), null, "no more suggestion once withdrawn");
+
+  // Timeline: the kid follows its parent, indented, though it starts earlier.
+  Q.updateFields(t.ctx, sp, Q.load(t.ctx, sp, parent.id), "Ana", { set: { start: "2026-03-01" } });
+  Q.updateFields(t.ctx, sp, Q.load(t.ctx, sp, kid.id), "Ana", { set: { start: "2026-02-01" } });
+  const tl = await go("#/list?view=timeline&q=Treehouse");
+  const labels = [...tl.querySelectorAll(".tl-rows .tl-label")] as any[];
+  assert.deepEqual(labels.map((l) => l.querySelector("a").textContent), ["Treehouse parent", "Treehouse kid"]);
+  assert.ok(!labels[0].className.includes("tl-child") && labels[1].className.includes("tl-child"));
+  const flatTl = await go("#/list?view=timeline&q=Treehouse&flat=1");
+  assert.deepEqual([...flatTl.querySelectorAll(".tl-rows .tl-label a")].map((a: any) => a.textContent), ["Treehouse kid", "Treehouse parent"], "flat: by start date");
+});
+
 test("no console errors", () => {
   assert.deepEqual(errors, []);
 });

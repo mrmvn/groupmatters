@@ -37,6 +37,24 @@ export const itemLabel = (t) => ITEM[t] ?? String(t ?? "item").replace(/_/g, " "
 
 export const CUSTOM_TOOL_ID = "custom";
 
+/** What the other question is to this one (the `role` of a relation, see src/relations.ts), as a tag on the question's page. */
+export const ROLE = {
+  parent: "Parent",
+  child: "Child",
+  related: "Related",
+  duplicate_of: "This is a duplicate of",
+  duplicated_by: "Duplicated by",
+};
+
+/** What a relation says when made from a question ("this question is …"): menu text, the symbol on suggestions, and the toast. */
+export const RELATE_AS = {
+  related: { menu: "is related to", symbol: "＋", hint: "Relate this existing question", done: "Related" },
+  child_of: { menu: "is a child of", symbol: "↳", hint: "Make this question a child of it", done: "Made a child" },
+  parent_of: { menu: "is the parent of", symbol: "↱", hint: "Make this question its parent", done: "Made the parent" },
+  duplicate_of: { menu: "is a duplicate of", symbol: "≡", hint: "Mark this question as a duplicate of it", done: "Marked as duplicate" },
+  duplicated_by: { menu: "is duplicated by", symbol: "≡", hint: "Mark it as a duplicate of this question", done: "Marked as duplicate" },
+};
+
 export const ACTION = {
   "question.created": "added the question",
   "question.edited": "edited the question",
@@ -52,8 +70,8 @@ export const ACTION = {
   "process.tool_matched": "linked to a tool on the list",
   "process.state_changed": "process state changed",
   "process.now_manual": "process can't be fetched any more; now updated by hand",
-  "relation.added": "related it to another question",
-  "relation.removed": "removed a related question",
+  "relation.added": "linked it to another question",
+  "relation.removed": "removed a link to another question",
   "tool.added": "added a tool",
   "tool.edited": "edited a tool",
   "tool.enabled": "enabled a tool",

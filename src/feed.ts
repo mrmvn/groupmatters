@@ -29,8 +29,13 @@ export function describeEvent(e: ActivityEvent, titles: Map<string, string>): st
     }
     case "process.state_changed":
       return `${t}: process is now ${d.after?.outcome_summary ?? STATE[d.after?.state] ?? d.after?.state}`;
-    case "relation.added":
-      return `${e.actor} related ${t} to “${d.other_title}”`;
+    case "relation.added": {
+      const self = e.question_id === d.from_id; // this question is the `from` side
+      const o = `“${d.other_title}”`;
+      if (d.kind === "child_of") return self ? `${e.actor} made ${t} a child of ${o}` : `${e.actor} made ${t} the parent of ${o}`;
+      if (d.kind === "duplicate") return self ? `${e.actor} marked ${t} as a duplicate of ${o}` : `${e.actor} marked ${o} as a duplicate of ${t}`;
+      return `${e.actor} related ${t} to ${o}`;
+    }
     case "tool.added":
       return `Tool added: ${d.tool?.name}`;
     case "charter.changed":

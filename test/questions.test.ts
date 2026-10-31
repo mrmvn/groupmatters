@@ -12,6 +12,7 @@ import { setStatusLabels } from "../src/rules.ts";
 import { fieldViews } from "../src/fields.ts";
 import { tick } from "../src/scheduler.ts";
 import { list } from "../src/search.ts";
+import { arrange } from "../src/relations.ts";
 
 const openPr = () => ({ body: fixture("github_pr_open.json") });
 const mergedPr = () => ({ body: fixture("github_pr_merged.json") });
@@ -254,6 +255,60 @@ test("relations: directed, shown on both sides, no self, no duplicates either wa
   Q.unrelate(ctx, space, a, "Ben", c.id);
   assert.equal(repo.relationsOf(ctx.db, c.id).length, 0);
   assert.ok(actions(ctx, space.id, c.id).includes("relation.removed") && actions(ctx, space.id, a.id).includes("relation.removed"));
+});
+
+test("hierarchy: child_of / parent_of, several parents allowed, loops refused (direct or through the chain), removed ones count", async () => {
+  const { ctx } = makeCtx();
+  const { space } = makeSpace(ctx);
+  const mk = (title: string, extra: object = {}) => Q.create(ctx, space, "Ana", { title, ...extra });
+  const A = await mk("A"), B = await mk("B"), C = await mk("C"), D = await mk("D");
+  Q.relate(ctx, space, B, "Ana", { id: A.id, kind: "child_of" }); // B is a child of A
+  Q.relate(ctx, space, B, "Ana", { id: C.id, kind: "parent_of" }); // B is the parent of C
+  assert.deepEqual(repo.relationsOf(ctx.db, B.id).map((r) => [r.from_id, r.to_id, r.kind]), [[B.id, A.id, "child_of"], [C.id, B.id, "child_of"]], "stored as child → parent");
+  // A → B → C: making A a child of C (or of B) would close a loop.
+  assert.throws(() => Q.relate(ctx, space, A, "Ana", { id: C.id, kind: "child_of" }), (e: any) => e.code === "hierarchy_loop" && /“C” is already below “A”.*“C” → “B” → “A”/.test(e.message));
+  assert.throws(() => Q.relate(ctx, space, C, "Ana", { id: A.id, kind: "parent_of" }), (e: any) => e.code === "hierarchy_loop");
+  assert.throws(() => Q.relate(ctx, space, A, "Ana", { id: B.id, kind: "child_of" }), /already related/, "the pair is related already");
+  // A second parent is fine, as long as it's no loop.
+  Q.relate(ctx, space, C, "Ana", { id: D.id, kind: "child_of" });
+  assert.deepEqual(repo.relationsOf(ctx.db, C.id).filter((r) => r.from_id === C.id).map((r) => r.to_id).sort(), [B.id, D.id].sort());
+  // …but a loop is a loop even through a removed question.
+  Q.remove(ctx, space, Q.load(ctx, space, B.id), "Ana", {});
+  assert.throws(() => Q.relate(ctx, space, A, "Ana", { id: C.id, kind: "child_of" }), (e: any) => e.code === "hierarchy_loop" && /“B”/.test(e.message));
+  // Duplicates read from either side.
+  Q.relate(ctx, space, D, "Ana", { id: A.id, kind: "duplicated_by" });
+  assert.equal(repo.relationsOf(ctx.db, D.id).find((r) => r.kind === "duplicate")?.from_id, A.id, "A duplicates D");
+  // The log says it from each side.
+  const ev = repo.listActivity(ctx.db, space.id, { questionId: C.id }).find((e) => e.action === "relation.added" && (e.data as any).to_id === D.id)!;
+  const data = ev.data as any;
+  assert.deepEqual([data.kind, data.from_id, data.other_title], ["child_of", C.id, "D"]);
+});
+
+test("create with a relation: the new question is a child of / the parent of / a duplicate of the other", async () => {
+  const { ctx } = makeCtx();
+  const { space } = makeSpace(ctx);
+  const root = await Q.create(ctx, space, "Ana", { title: "Root" });
+  const kid = await Q.create(ctx, space, "Ana", { title: "Kid", related_id: root.id, related_kind: "child_of" });
+  const top = await Q.create(ctx, space, "Ana", { title: "Top", related_id: root.id, related_kind: "parent_of" });
+  const dup = await Q.create(ctx, space, "Ana", { title: "Dup", related_id: root.id, related_kind: "duplicate_of" });
+  const rel = (q: { id: string }) => repo.relationsOf(ctx.db, q.id).map((r) => [r.from_id, r.to_id, r.kind]);
+  assert.deepEqual(rel(kid), [[kid.id, root.id, "child_of"]]);
+  assert.deepEqual(rel(top), [[root.id, top.id, "child_of"]]);
+  assert.deepEqual(rel(dup), [[dup.id, root.id, "duplicate"]]);
+  await assert.rejects(() => Q.create(ctx, space, "Ana", { title: "X", related_id: root.id, related_kind: "sibling" }), /Unknown relation kind/);
+});
+
+test("arrange: children under their first parent present in the list; a hidden parent leaves the child at the top", () => {
+  const rel = (from: string, to: string, at: string) => ({ from_id: from, to_id: to, kind: "child_of" as const, created_at: at, created_by: "Ana" });
+  const items = ["a", "b", "c", "d", "e"].map((id) => ({ id }));
+  // c is a child of b and a (b first); d of c; e of a missing question.
+  const rels = [rel("c", "b", "1"), rel("c", "a", "2"), rel("d", "c", "3"), rel("e", "gone", "4")];
+  assert.deepEqual(
+    arrange(items, rels).map((i) => [i.id, i.depth, i.parent_id]),
+    [["a", 0, undefined], ["b", 0, undefined], ["c", 1, "b"], ["d", 2, "c"], ["e", 0, undefined]],
+  );
+  assert.deepEqual(arrange(items.filter((i) => i.id !== "b"), rels).map((i) => [i.id, i.depth]), [["a", 0], ["c", 1], ["d", 2], ["e", 0]], "c moves under its other parent");
+  assert.deepEqual(arrange(items.filter((i) => i.id !== "b" && i.id !== "a"), rels).map((i) => [i.id, i.depth]), [["c", 0], ["d", 1], ["e", 0]]);
 });
 
 test("list: presets and sort by latest activity (including the platform's)", async () => {

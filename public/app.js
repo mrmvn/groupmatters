@@ -9,8 +9,8 @@
 // No tabs: the space name opens the items, the menu (top right) has Dashboard, Tools, Activity, How this works, Export.
 import { api, qs, getName, setName, TOKEN, ApiError } from "./api.js";
 import { h, extLink, fmtDate, time, timeAgo, toast, debounce } from "./dom.js";
-import { STATE, STATE_HINT, QUESTION_STATES, ENDED, CUSTOM_TOOL_ID, itemLabel } from "./labels.js";
-import { statusPill, questionPill, statePill, questionCard, activityItem, mappingEditor } from "./components.js";
+import { STATE, STATE_HINT, QUESTION_STATES, ENDED, CUSTOM_TOOL_ID, ROLE, RELATE_AS, itemLabel } from "./labels.js";
+import { statusPill, questionPill, statePill, questionTree, questionCard, activityItem, mappingEditor } from "./components.js";
 import { renderMarkdown } from "./md.js";
 import { fieldCell, createFields, retrievedFromPreview, FIELD_LABEL } from "./fields.js";
 import { timelineChart } from "./timeline.js";
@@ -315,6 +315,9 @@ function listControls(params, view) {
   const query = Object.fromEntries(FILTER_KEYS.map((k) => [k, params.get(k)]));
   query.status = params.get("status") || (LANES[lane]?.status ?? "");
   if (sort) query.sort = params.get("sort");
+  // Children under their parent, unless asked for a flat list (`flat=1`).
+  const hierarchy = params.get("flat") !== "1";
+  if (hierarchy) query.hierarchy = "1";
 
   const setParam = (k, v) => {
     const p = new URLSearchParams(params);
@@ -344,7 +347,7 @@ function listControls(params, view) {
   );
   const filters = h(
     "details",
-    { class: "filters", open: ["preset", "status", "tool", "state", "source", "has_process", "item_type", "sort"].some((k) => params.get(k)) },
+    { class: "filters", open: ["preset", "status", "tool", "state", "source", "has_process", "item_type", "sort", "flat"].some((k) => params.get(k)) },
     h("summary", null, "Filters"),
     presets,
     h(
@@ -357,6 +360,7 @@ function listControls(params, view) {
       sel("state", "Process state", Object.entries(STATE)),
       sel("has_process", "Has a process", [["yes", "Yes"], ["no", "No"]]),
       sort ? sel("sort", "Order", [["", "Latest activity first"], ["created", "Newest first"]], null) : null,
+      sel("flat", "Children", [["", "Under their parent"], ["1", "Listed apart (flat)"]], null),
     ),
   );
   const relatedChip = params.get("related") ? h("p", null, "Showing questions related to another · ", h("a", { href: `#/q/${params.get("related")}` }, "open it"), " · ", h("button", { class: "link", onclick: () => setParam("related", "") }, "clear")) : null;
@@ -386,18 +390,18 @@ function listControls(params, view) {
     return h("a", { href: `#/list?${p}`, class: `view-btn${view === v ? " current" : ""}`, title: label, "aria-label": label, "aria-current": view === v ? "true" : null }, h("span", { class: `ico ico-${v}`, "aria-hidden": "true" }, h("i"), h("i"), h("i")));
   };
   const viewToggle = h("div", { class: "view-toggle", role: "group", "aria-label": "View" }, viewBtn("list", "Show as a list"), viewBtn("timeline", "Show on a timeline"));
-  return { searching, lane, query, controls: [h("div", { class: "toolbar" }, searchForm, laneNav, viewToggle), filters, relatedChip] };
+  return { searching, lane, query, hierarchy, controls: [h("div", { class: "toolbar" }, searchForm, laneNav, viewToggle), filters, relatedChip] };
 }
 
 async function pageHome(params) {
   const view = params.get("view") === "timeline" ? "timeline" : "list";
-  const { searching, lane, query, controls } = listControls(params, view);
+  const { searching, lane, query, hierarchy, controls } = listControls(params, view);
   let body;
   if (view === "list") {
     const { questions } = await api("GET", `questions${qs(query)}`);
-    const ctx = { tools: S.tools, since: S.since, space: S.space };
+    const ctx = { tools: S.tools, since: S.since, space: S.space, hierarchy };
     body = questions.length
-      ? h("ul", { class: "cards" }, questions.map((q) => questionCard(q, ctx)))
+      ? h("ul", { class: "cards" }, hierarchy ? questionTree(questions, ctx) : questions.map((q) => questionCard(q, ctx)))
       : h("p", { class: "empty" }, searching ? "No questions match." : lane === "current" ? "No current questions. Add one above." : "Nothing here yet.");
   } else {
     // The questions with a start date as bars over time, to their end (or today).
@@ -440,7 +444,8 @@ function composer(opts = {}) {
   const newDetails = (retrieved) => (details = createFields({ labels: S.space.settings.status_labels, kinds: knownKinds(), retrieved }));
   const title = h("input", { type: "text", maxlength: 300 });
   const hints = h("div", { class: "hints" });
-  const submitBtn = h("button", { type: "submit", class: "primary" }, opts.relateTo ? "Add as a new related question" : "Add question");
+  const submitLabel = () => (opts.relateTo ? RELATE_NEW[opts.kind?.() ?? "related"] : "Add question");
+  const submitBtn = h("button", { type: "submit", class: "primary" }, submitLabel());
 
   const loadHints = debounce(async (t) => {
     if (t.length < 4) return hints.replaceChildren();
@@ -448,11 +453,11 @@ function composer(opts = {}) {
       const { similar } = await api("GET", `similar${qs({ title: t, exclude: opts.relateTo })}`);
       const list = opts.exclude ? similar.filter((s) => !opts.exclude.has(s.id)) : similar;
       if (!list.length) return hints.replaceChildren();
-      const kindNow = opts.kind?.() ?? "related";
+      const as = RELATE_AS[opts.kind?.() ?? "related"];
       // On a question page, a suggestion is a link target: clicking it relates the existing question.
       const item = (s) =>
         opts.relateTo
-          ? h("li", null, h("button", { type: "button", class: "link", title: kindNow === "duplicate" ? "Mark this question as a duplicate of it" : "Relate this existing question", onclick: () => opts.onRelate(s) }, kindNow === "duplicate" ? "≡ " : "＋ ", s.title), " ", statusPill(s.status), " ", h("a", { href: `#/q/${s.id}`, class: "muted small", title: "Open it" }, "↗"))
+          ? h("li", null, h("button", { type: "button", class: "link", title: as.hint, onclick: () => opts.onRelate(s) }, `${as.symbol} `, s.title), " ", statusPill(s.status), " ", h("a", { href: `#/q/${s.id}`, class: "muted small", title: "Open it" }, "↗"))
           : h("li", null, h("a", { href: `#/q/${s.id}` }, s.title), " ", statusPill(s.status));
       hints.replaceChildren(
         h(
@@ -554,7 +559,7 @@ function composer(opts = {}) {
         } catch (err) {
           return toast(err.message, "error");
         }
-        const body = { related_id: opts.relateTo, title: mode === "link" ? title.value : v, fields: d.fields };
+        const body = { related_id: opts.relateTo, ...(opts.relateTo ? { related_kind: SEEN_FROM_NEW[opts.kind?.() ?? "related"] } : {}), title: mode === "link" ? title.value : v, fields: d.fields };
         if (d.status) body.status = d.status;
         if (mode === "link") body.process = { url: v, ...(d.process_kind ? { kind: d.process_kind } : {}) };
         else if (d.process_kind) body.process = { kind: d.process_kind };
@@ -580,8 +585,25 @@ function composer(opts = {}) {
     input,
     panel,
   );
+  // The relation chosen beside it changes what the button says and what the suggestions do.
+  form.relationChanged = () => {
+    submitBtn.textContent = submitLabel();
+    loadHints(input.value.trim());
+  };
   return form;
 }
+
+/** The relation chosen on a question's page says what *that* question is to the other one; the new question sees it the other way round. */
+const SEEN_FROM_NEW = { related: "related", child_of: "parent_of", parent_of: "child_of", duplicate_of: "duplicated_by", duplicated_by: "duplicate_of" };
+
+/** The button for a new question made from a question's page, by relation. */
+const RELATE_NEW = {
+  related: "Add as a new related question",
+  child_of: "Add as a new parent question",
+  parent_of: "Add as a new child question",
+  duplicate_of: "Add as a new question this duplicates",
+  duplicated_by: "Add as a new duplicate",
+};
 
 // ---------------------------------------------------------------- question page
 
@@ -787,15 +809,39 @@ function relationsBlock(q, d) {
   const unrelate = (x) => async () => {
     if (await act(() => api("DELETE", `questions/${q.id}/related/${x.id}`), "Relation removed")) await refresh();
   };
-  const kindSel = h("select", { "aria-label": "Kind of relation" }, h("option", { value: "related" }, "Related to"), h("option", { value: "duplicate" }, "This question is a duplicate of"));
+  let form;
+  const kindSel = h(
+    "select",
+    { "aria-label": "How this question relates to the other one", onchange: () => form?.relationChanged() },
+    Object.entries(RELATE_AS).map(([v, a]) => h("option", { value: v }, `This question ${a.menu}…`)),
+  );
+  const kindNow = () => kindSel.value || "related";
   const relate = async (x) => {
-    if (await act(() => api("POST", `questions/${q.id}/related`, { id: x.id, kind: kindSel.value }), kindSel.value === "duplicate" ? "Marked as duplicate" : "Related")) await refresh();
+    const kind = kindNow();
+    if (await act(() => api("POST", `questions/${q.id}/related`, { id: x.id, kind }), RELATE_AS[kind].done)) await refresh();
   };
-  const kindText = (x) => (x.kind === "duplicate" ? (x.direction === "to" ? "this is a duplicate of" : "duplicate of this") : null);
+  const withdraw = (id, note) => async () => {
+    if (await act(() => api("PUT", `questions/${id}/fields`, { set: { status: { state: "withdrawn" } }, note }), "Withdrawn")) await refresh();
+  };
+  // A duplicate is better withdrawn, so only one of the two stays active (suggested, never forced).
+  const dupHints = !editable
+    ? []
+    : [
+        ...(q.status === "withdrawn"
+          ? []
+          : d.related.filter((x) => x.role === "duplicate_of").map((x) =>
+              h("div", { class: "notice rel-hint" }, "This question duplicates “", h("a", { href: `#/q/${x.id}` }, x.title), "”. Withdraw it, so only one stays active? ", h("button", { onclick: withdraw(q.id, `Duplicate of “${x.title}”`) }, "Withdraw this question")),
+            )),
+        ...d.related.filter((x) => x.role === "duplicated_by" && x.status !== "withdrawn").map((x) =>
+          h("div", { class: "notice rel-hint" }, "“", h("a", { href: `#/q/${x.id}` }, x.title), "” duplicates this question. Withdraw it, so only one stays active? ", h("button", { onclick: withdraw(x.id, `Duplicate of “${q.title}”`) }, "Withdraw it")),
+        ),
+      ];
+  form = editable ? composer({ relateTo: q.id, exclude: new Set(d.related.map((x) => x.id)), onRelate: relate, kind: kindNow, placeholder: "Type to find a question, or add a new one…" }) : null;
   return h(
     "section",
     { class: "panel" },
     h("h2", null, "Related questions"),
+    dupHints,
     d.related.length
       ? h(
           "ul",
@@ -803,8 +849,8 @@ function relationsBlock(q, d) {
           d.related.map((x) =>
             h(
               "li",
-              null,
-              kindText(x) ? h("span", { class: "muted small" }, kindText(x), ": ") : null,
+              { class: `rel-${x.role}` },
+              h("span", { class: "rel-kind" }, ROLE[x.role], ": "),
               h("a", { href: `#/q/${x.id}` }, x.title),
               " ",
               statusPill(x.status),
@@ -814,9 +860,7 @@ function relationsBlock(q, d) {
         )
       : h("p", { class: "muted" }, "None yet."),
     editable ? h("div", { class: "row" }, kindSel) : null,
-    editable
-      ? composer({ relateTo: q.id, exclude: new Set(d.related.map((x) => x.id)), onRelate: relate, kind: () => kindSel.value, placeholder: "Type to find a question, or add a new one…" })
-      : null,
+    form,
   );
 }
 

@@ -9,6 +9,7 @@ import { list, similar } from "../search.ts";
 import { addToolDirect, editToolDirect, setStatusLabels, setToolEnabledDirect } from "../rules.ts";
 import { exportSpace } from "../export.ts";
 import { timeline } from "../timeline.ts";
+import { arrange, roleOf, ROLES } from "../relations.ts";
 import { dashboard } from "../dashboard.ts";
 import { withFields } from "../fields.ts";
 import { adapterIds, getAdapter } from "../adapters/index.ts";
@@ -67,6 +68,28 @@ function toolsView(ctx: Ctx, space: Space, used = usage(ctx, space).tools) {
   });
 }
 
+/**
+ * The list, each question with `links` (what the questions it's related to are to it: parent, child,
+ * related, duplicate_of, duplicated_by; removed ones left out). With `hierarchy=1` children follow their
+ * parent (`depth`, and `parent_id` when the parent is in the list).
+ */
+function listView(ctx: Ctx, space: Space, query: Record<string, string | undefined>) {
+  let qs = list(ctx, space, query) as (ReturnType<typeof list>[number] & { depth?: number; parent_id?: string })[];
+  const relations = repo.listRelations(ctx.db, space.id);
+  if (query.hierarchy === "1") qs = arrange(qs, relations);
+  const byId = new Map(repo.listQuestions(ctx.db, space.id).map((x) => [x.id, x]));
+  return qs.map((q) => {
+    const links = relations
+      .filter((r) => r.from_id === q.id || r.to_id === q.id)
+      .flatMap((r) => {
+        const other = byId.get(r.from_id === q.id ? r.to_id : r.from_id);
+        return other ? [{ id: other.id, title: other.title, status: other.status, role: roleOf(r, q.id) }] : [];
+      })
+      .sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
+    return { ...q, links };
+  });
+}
+
 function questionDetail(ctx: Ctx, space: Space, id: string) {
   const q = Q.load(ctx, space, id);
   const all = repo.listQuestions(ctx.db, space.id);
@@ -76,9 +99,11 @@ function questionDetail(ctx: Ctx, space: Space, id: string) {
     const outgoing = r.from_id === q.id;
     const other = byId.get(outgoing ? r.to_id : r.from_id);
     return other
-      ? [{ id: other.id, title: other.title, status: other.status, kind: r.kind, direction: outgoing ? "to" : "from", created_at: r.created_at, created_by: r.created_by }]
+      ? [{ id: other.id, title: other.title, status: other.status, kind: r.kind, direction: outgoing ? "to" : "from", role: roleOf(r, q.id), created_at: r.created_at, created_by: r.created_by }]
       : [];
   });
+  // Parents, children, related, then duplicates; the oldest first within each.
+  related.sort((a, b) => ROLES.indexOf(a.role) - ROLES.indexOf(b.role));
   return {
     question: withFields(q),
     related,
@@ -146,7 +171,7 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
   // ---- questions ----
   if (a !== "questions") throw notFound();
   if (!id) {
-    if (method === "GET") return { questions: list(ctx, space, Object.fromEntries(r.query.entries())) };
+    if (method === "GET") return { questions: listView(ctx, space, Object.fromEntries(r.query.entries())) };
     if (method === "POST") {
       const q = await Q.create(ctx, space, actor, r.body);
       return questionDetail(ctx, space, q.id);

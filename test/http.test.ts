@@ -168,6 +168,43 @@ test("relate existing questions: shown on both, removable", async () => {
   assert.equal(del.json.related.length, 0);
 });
 
+test("hierarchy over HTTP: roles on the detail, loops refused with 409, list and timeline arranged on request", async () => {
+  const mk = async (title: string) => (await api(editToken, "POST", "questions", { title })).json.question;
+  const [p, c, g, x] = [await mk("Hier parent"), await mk("Hier child"), await mk("Hier grandchild"), await mk("Hier other")];
+  assert.equal((await api(editToken, "POST", `questions/${c.id}/related`, { id: p.id, kind: "child_of" })).status, 200);
+  assert.equal((await api(editToken, "POST", `questions/${c.id}/related`, { id: g.id, kind: "parent_of" })).status, 200);
+  await api(editToken, "POST", `questions/${x.id}/related`, { id: g.id });
+  const loop = await api(editToken, "POST", `questions/${p.id}/related`, { id: g.id, kind: "child_of" });
+  assert.equal(loop.status, 409);
+  assert.equal(loop.json.error.code, "hierarchy_loop");
+  assert.equal((await api(editToken, "POST", `questions/${p.id}/related`, { id: c.id, kind: "bogus" })).status, 400);
+
+  const mid = (await api(editToken, "GET", `questions/${c.id}`)).json;
+  assert.deepEqual(mid.related.map((r: any) => [r.title, r.role]), [["Hier parent", "parent"], ["Hier grandchild", "child"]], "parents first, then children");
+  assert.deepEqual((await api(editToken, "GET", `questions/${g.id}`)).json.related.map((r: any) => [r.title, r.role]), [["Hier child", "parent"], ["Hier other", "related"]]);
+
+  const flat = (await api(editToken, "GET", "questions?q=Hier&sort=created")).json.questions;
+  assert.ok(flat.every((q: any) => q.depth === undefined), "flat unless asked");
+  const tree = (await api(editToken, "GET", "questions?q=Hier&hierarchy=1&sort=created")).json.questions;
+  const at = (title: string) => tree.findIndex((q: any) => q.title === title);
+  assert.deepEqual([at("Hier child") - at("Hier parent"), at("Hier grandchild") - at("Hier child")], [1, 1], "each right under its parent");
+  const placed = tree.filter((q: any) => q.title !== "Hier other").map((q: any) => [q.title, q.depth, q.parent_id]);
+  assert.deepEqual(placed, [["Hier parent", 0, undefined], ["Hier child", 1, p.id], ["Hier grandchild", 2, c.id]]);
+  const grand = tree.find((q: any) => q.title === "Hier grandchild");
+  assert.deepEqual(grand.links.map((l: any) => [l.title, l.role]), [["Hier child", "parent"], ["Hier other", "related"]]);
+  // With the parent filtered out, the child stands at the top.
+  await api(editToken, "PUT", `questions/${p.id}/fields`, { set: { status: { state: "accepted" } } });
+  const open = (await api(editToken, "GET", "questions?q=Hier&hierarchy=1&status=not_started")).json.questions;
+  assert.deepEqual(open.filter((q: any) => q.title.startsWith("Hier ch")).map((q: any) => [q.depth, q.parent_id]), [[0, undefined]]);
+
+  // Timeline: same arrangement, among the dated ones.
+  for (const [q, start] of [[g, "2026-01-01"], [c, "2026-02-01"], [p, "2026-03-01"]] as const) await api(editToken, "PUT", `questions/${q.id}/fields`, { set: { start } });
+  const byStart = (await api(editToken, "GET", "timeline?q=Hier")).json.items.map((i: any) => i.title);
+  assert.deepEqual(byStart, ["Hier grandchild", "Hier child", "Hier parent"]);
+  const tl = (await api(editToken, "GET", "timeline?q=Hier&hierarchy=1")).json.items;
+  assert.deepEqual(tl.map((i: any) => [i.title, i.depth]), [["Hier parent", 0], ["Hier child", 1], ["Hier grandchild", 2]]);
+});
+
 test("search, filters and duplicate hints", async () => {
   await api(editToken, "POST", "questions", { title: "How do newcomers find a first task?", why_it_matters: "Onboarding" });
   const s = await api(editToken, "GET", "questions?q=newcomers");

@@ -43,29 +43,81 @@ export function processChip(q, tools) {
   );
 }
 
-export function questionCard(q, ctx) {
+/** What the card says about the questions it's linked to, besides its place in the hierarchy: "Related to A, B". */
+const LINK_TEXT = { parent: "Child of", child: "Parent of", related: "Related to", duplicate_of: "Duplicate of", duplicated_by: "Duplicated by" };
+const LINK_MARK = { parent: "↳", child: "↱", related: "↔", duplicate_of: "≡", duplicated_by: "≡" };
+
+function cardLinks(q, hierarchy) {
+  // In the hierarchy, the parent it stands under and the children below it are already visible.
+  const shown = (l) => (hierarchy ? !(l.role === "child" || (l.role === "parent" && l.id === q.parent_id)) : true);
+  const links = (q.links ?? []).filter(shown);
+  if (!links.length) return null;
+  const roles = Object.keys(LINK_TEXT).filter((r) => links.some((l) => l.role === r));
+  return h(
+    "div",
+    { class: "card-links" },
+    roles.map((r) =>
+      h(
+        "span",
+        { class: "card-link" },
+        h("span", { "aria-hidden": "true" }, LINK_MARK[r], " "),
+        `${LINK_TEXT[r]} `,
+        links.filter((l) => l.role === r).map((l, i) => [i ? ", " : "", h("a", { href: `#/q/${l.id}` }, l.title)]),
+      ),
+    ),
+  );
+}
+
+/**
+ * One question as a card. With `children` (cards of the questions below it) they are nested under it,
+ * with a discreet branch. `ctx.hierarchy`: the list is arranged by hierarchy (see cardLinks).
+ */
+export function questionCard(q, ctx, children = []) {
   const { tools, since } = ctx;
   const changed = since && q.last_activity_at > since;
   const platformAt = q.process?.fetched?.dates?.updated_at;
   return h(
     "li",
-    { class: `card${changed ? " is-changed" : ""}` },
-    h("div", { class: "card-head" }, h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title), questionPill(q)),
+    { class: "node" },
     h(
       "div",
-      { class: "card-meta" },
-      processChip(q, tools),
-      q.fields?.summary?.value ? h("span", { class: "muted" }, q.fields.summary.value) : null,
+      { class: `card${changed ? " is-changed" : ""}` },
+      h("div", { class: "card-head" }, h("a", { href: `#/q/${q.id}`, class: "card-title" }, q.title), questionPill(q)),
+      h(
+        "div",
+        { class: "card-meta" },
+        processChip(q, tools),
+        q.fields?.summary?.value ? h("span", { class: "muted" }, q.fields.summary.value) : null,
+      ),
+      h(
+        "div",
+        { class: "card-criteria" },
+        q.process ? (q.fields?.status?.source === "retrieved" ? "Status retrieved" : "Status typed") : "No process",
+        " · ",
+        platformAt ? ["last activity on the platform ", time(platformAt, timeAgo(platformAt))] : ["last change ", time(q.last_activity_at, timeAgo(q.last_activity_at))],
+      ),
+      cardLinks(q, ctx.hierarchy),
+      changed ? h("div", { class: "badges" }, h("span", { class: "badge changed" }, "★ Changed since your last visit")) : null,
     ),
-    h(
-      "div",
-      { class: "card-criteria" },
-      q.process ? (q.fields?.status?.source === "retrieved" ? "Status retrieved" : "Status typed") : "No process",
-      " · ",
-      platformAt ? ["last activity on the platform ", time(platformAt, timeAgo(platformAt))] : ["last change ", time(q.last_activity_at, timeAgo(q.last_activity_at))],
-    ),
-    changed ? h("div", { class: "badges" }, h("span", { class: "badge changed" }, "★ Changed since your last visit")) : null,
+    children.length ? h("ul", { class: "cards children" }, children) : null,
   );
+}
+
+/** The cards of a list arranged by hierarchy (`parent_id` on each question, parents first), nested. */
+export function questionTree(questions, ctx) {
+  const kids = new Map();
+  for (const q of questions) if (q.parent_id) kids.set(q.parent_id, [...(kids.get(q.parent_id) ?? []), q]);
+  const build = (q) => questionCard(q, ctx, (kids.get(q.id) ?? []).map(build));
+  return questions.filter((q) => !q.parent_id).map(build);
+}
+
+/** "child of “X”", "parent of “X”", "duplicate of “X”"… for a relation event, from the side of the question it was logged on. */
+function relationDetail(e, d) {
+  const self = e.question_id === d.from_id;
+  const other = d.other_title ? `“${d.other_title}”` : "another question";
+  if (d.kind === "child_of") return `${self ? "child" : "parent"} of ${other}`;
+  if (d.kind === "duplicate") return self ? `duplicate of ${other}` : `duplicated by ${other}`;
+  return `related to ${other}`;
 }
 
 /** One line in an activity list. */
@@ -139,7 +191,7 @@ export function activityItem(e, titles) {
       break;
     case "relation.added":
     case "relation.removed":
-      detail = [d.kind === "duplicate" ? "duplicate: " : "", d.other_title ? `“${d.other_title}”` : ""];
+      detail = relationDetail(e, d);
       break;
   }
   const qTitle = titles && e.question_id ? titles.get(e.question_id) : null;

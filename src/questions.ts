@@ -4,8 +4,8 @@
 // item or typed (see fields.ts). Linking an item whose status can be retrieved makes the status
 // follow it; anyone can type a value instead, and go back to the retrieved one.
 import type { Ctx } from "./ctx.ts";
-import type { Question, RelationKind, Space } from "./types.ts";
-import { RELATION_KINDS } from "./types.ts";
+import type { Question, Space } from "./types.ts";
+import { hierarchyLoop, RELATION_INPUTS, storedKind, type RelationInput } from "./relations.ts";
 import * as repo from "./repo.ts";
 import { tx } from "./db.ts";
 import { duplicateLinkError, findQuestionWithLink, prepareProcess, storeProcess, type Prepared } from "./processes.ts";
@@ -72,7 +72,7 @@ function adoptProcess(ctx: Ctx, space: Space, q: Question, actor: string, prepar
 
 /**
  * Create a question. Optional: a process (`process_url`, or `process: {url?, kind?}`), a related
- * question (`related_id`), a typed status (`status: {label}|{state}`), typed `fields` (`summary`,
+ * question (`related_id`, with `related_kind`: how the new question stands to it, as in `relate`), a typed status (`status: {label}|{state}`), typed `fields` (`summary`,
  * `results_url`, `start`, `end`; empty ones are left to the linked item). With a link, the title is
  * retrieved unless a different one is given (then it's typed).
  */
@@ -81,6 +81,7 @@ export async function create(ctx: Ctx, space: Space, actor: string, body: any): 
   const why = trimOrUndef(body?.why_it_matters, 5000);
   // `parent_id` is the pre-relations name, still accepted.
   const related = validateRelated(ctx, space, {}, body?.related_id ?? body?.parent_id);
+  const relatedKind = relationInput(body?.related_kind);
   const processUrl = trimOrUndef(body?.process_url, 2000);
   const processBody = body?.process ?? (processUrl ? { url: processUrl } : undefined);
   const linkUrl = trimOrUndef(processBody?.url ?? processBody?.custom?.url, 2000);
@@ -121,10 +122,10 @@ export async function create(ctx: Ctx, space: Space, actor: string, body: any): 
     log(ctx, q, actor, "question.created", {
       title,
       ...(why ? { why_it_matters: why } : {}),
-      ...(related ? { related_id: related.id } : {}),
+      ...(related ? { related_id: related.id, ...(relatedKind !== "related" ? { related_kind: relatedKind } : {}) } : {}),
       typed: Object.keys(q.typed),
     });
-    if (related) insertRelation(ctx, space, q, related, actor);
+    if (related) insertRelation(ctx, space, q, related, actor, relatedKind);
     if (prepared) {
       storeProcess(ctx, q, actor, prepared);
       sync(ctx, q, actor);
@@ -201,24 +202,49 @@ export function restore(ctx: Ctx, space: Space, q: Question, actor: string): Que
 
 // ---------- relations ----------
 
-function insertRelation(ctx: Ctx, space: Space, from: Question, to: Question, actor: string, kind: RelationKind = "related") {
+/** How a question is related to another, as the caller says it ("child_of", "duplicated_by"…); `related` by default. */
+function relationInput(v: unknown): RelationInput {
+  if (v == null || v === "") return "related";
+  if (!RELATION_INPUTS.includes(v as RelationInput)) throw bad("Unknown relation kind");
+  return v as RelationInput;
+}
+
+/** Store a relation between `q` and `other`; `how` says what `q` is to `other` ("q is a child of other"). */
+function insertRelation(ctx: Ctx, space: Space, q: Question, other: Question, actor: string, how: RelationInput = "related") {
+  const { kind, swap } = storedKind(how);
+  const [from, to] = swap ? [other, q] : [q, other];
   const existing = repo.relationsOf(ctx.db, from.id).find(
     (r) => (r.from_id === from.id && r.to_id === to.id) || (r.from_id === to.id && r.to_id === from.id),
   );
   if (existing) throw conflict("These questions are already related", "already_related");
+  if (kind === "child_of") {
+    // The hierarchy can't loop: `to` must not already be `from` or below it.
+    const chain = hierarchyLoop(repo.listRelations(ctx.db, space.id), from.id, to.id);
+    if (chain) {
+      const titles = new Map(repo.listQuestions(ctx.db, space.id, { removed: "include" }).map((x) => [x.id, x.title]));
+      const path = chain.map((id) => `“${titles.get(id) ?? "?"}”`).join(" → ");
+      throw conflict(
+        `“${to.title}” is already below “${from.title}” (${path}), so it can't also be its parent. Choose another relation, or unlink them first.`,
+        "hierarchy_loop",
+      );
+    }
+  }
   repo.insertRelation(ctx.db, space.id, { from_id: from.id, to_id: to.id, kind, created_at: ctx.now().toISOString(), created_by: actor });
   // Logged on both questions so each history shows it.
   log(ctx, from, actor, "relation.added", { kind, from_id: from.id, to_id: to.id, other_title: to.title });
   log(ctx, to, actor, "relation.added", { kind, from_id: from.id, to_id: to.id, other_title: from.title });
 }
 
-/** Relate an existing question to this one (q → other). `kind: "duplicate"` means q duplicates other. */
+/**
+ * Relate an existing question to this one. `kind` says what *this* question is: `related` (default),
+ * `child_of` / `parent_of`, `duplicate_of` (`duplicate` is the older name) / `duplicated_by`.
+ * A child can have several parents; loops in the hierarchy are refused.
+ */
 export function relate(ctx: Ctx, space: Space, q: Question, actor: string, body: any) {
-  const kind = (body?.kind ?? "related") as RelationKind;
-  if (!RELATION_KINDS.includes(kind)) throw bad("Unknown relation kind");
+  const how = relationInput(body?.kind);
   const other = validateRelated(ctx, space, q, body?.id);
   if (!other) throw bad("Choose a question to relate");
-  tx(ctx.db, () => insertRelation(ctx, space, q, other, actor, kind));
+  tx(ctx.db, () => insertRelation(ctx, space, q, other, actor, how));
 }
 
 /** Remove the relation between q and another question, whichever its direction and kind. */

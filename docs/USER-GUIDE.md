@@ -58,7 +58,13 @@ The **timeline** view (second symbol, next to the lanes; it opens on **All**) sh
 
 ## Related questions
 
-On a question's page, type in the **Related questions** box: matching questions appear. Click one to relate it (or choose "This question is a duplicate of" first). If none fits, add yours as a new related question. Relations show on both questions.
+On a question's page, the **Related questions** box lists every question linked to it, each with how it relates: **Parent**, **Child**, **Related**, **This is a duplicate of** or **Duplicated by**. Relations show on both questions, each from its own side.
+
+To add one, first say what this question is ("is related to", "is a child of", "is the parent of", "is a duplicate of", "is duplicated by"), then type in the box: matching questions appear, and clicking one links it. If none fits, add yours as a new question with that relation. "Unlink" removes a relation; both questions stay.
+
+- **Parents and children**: a question can have several parents, but never be its own ancestor: a link that would close a loop is refused, with the chain that explains why.
+- **In the list and on the timeline**, children are shown under their parent, with a small branch (for a question with several parents, under the one linked first that is shown). If the parent isn't shown (another lane, a search), the child stands on its own and says it's a child of it. **Filters → Children → Listed apart** gives the plain list. Related and duplicate questions aren't nested: each card mentions them ("Related to…", "Duplicate of…").
+- **Duplicates**: when two questions duplicate each other's purpose, mark one as a duplicate of the other. The page then suggests **withdrawing** the duplicate so only one stays active (a single click; it's never done for you).
 
 ## Shortcuts
 

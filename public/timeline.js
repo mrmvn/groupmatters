@@ -98,6 +98,18 @@ export function timelineChart(items, nowIso) {
     place(h("span", { class: "tl-today", title: "Today" }), now),
   );
 
+  // Children sit under their parent, indented with a small branch (`depth` comes with hierarchy=1).
+  const label = (it) => {
+    const el = h(
+      "div",
+      { class: `tl-label${it.depth ? " tl-child" : ""}` },
+      it.depth ? h("span", { class: "tl-branch", "aria-hidden": "true" }, "└") : null,
+      h("a", { href: `#/q/${it.id}`, title: it.title }, it.title),
+    );
+    if (it.depth) el.style.paddingLeft = `${Math.min(it.depth, 4) * 0.9}rem`;
+    return el;
+  };
+
   const rows = items.map((it, i) => {
     const l = spans[i];
     const text = describe(it, now);
@@ -115,7 +127,7 @@ export function timelineChart(items, nowIso) {
     return h(
       "li",
       { class: "tl-row" },
-      h("div", { class: "tl-label" }, h("a", { href: `#/q/${it.id}`, title: it.title }, it.title)),
+      label(it),
       h("div", { class: "tl-track" }, pieces),
     );
   });

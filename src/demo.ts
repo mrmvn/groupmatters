@@ -53,7 +53,7 @@ export async function seedDemo(ctx: Ctx) {
   type(call, { start: day(-10) }, "Chloé");
   const inclusive = await Q.create(ctx, s, "Chloé", { title: "How can we make our decisions more inclusive?", status: { label: "Being discussed" } });
   type(inclusive, { start: day(-20), end: day(30) }, "Chloé");
-  await Q.create(ctx, s, "Ben", { title: "Should meeting notes be translated into Spanish?", related_id: inclusive.id });
+  await Q.create(ctx, s, "Ben", { title: "Should meeting notes be translated into Spanish?", related_id: inclusive.id, related_kind: "child_of" });
   const shirts = await Q.create(ctx, s, "Chloé", { title: "Should we print t-shirts?", status: { label: "Not agreed" } });
   type(shirts, { start: day(-60) }, "Chloé");
   return r;

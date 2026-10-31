@@ -102,8 +102,12 @@ export type Question = {
   last_activity_at: ISODate;
 };
 
-/** A directed link between two questions. Shown on both of them. */
-export const RELATION_KINDS = ["related", "duplicate"] as const;
+/**
+ * A directed link between two questions. Shown on both of them. Stored as `from → to`:
+ * `child_of` (from is a child of to: to is the parent), `duplicate` (from duplicates to) and the
+ * symmetric `related`. See relations.ts for the other ways to say them (`parent_of`, `duplicated_by`).
+ */
+export const RELATION_KINDS = ["related", "child_of", "duplicate"] as const;
 export type RelationKind = (typeof RELATION_KINDS)[number];
 export type Relation = { from_id: string; to_id: string; kind: RelationKind; created_at: ISODate; created_by: string };
 
