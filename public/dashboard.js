@@ -41,19 +41,18 @@ function barRows(rows, max = Math.max(1, ...rows.map((r) => r.n))) {
 const empty = (text) => h("p", { class: "muted" }, text);
 
 // ---------------------------------------------------------------- widgets
-// Each: { id, title, why (what it's for: shown in the chooser), size: [columns, rows], build(d, ctx) → Node }
-// The grid has 4 columns on a wide screen and fixed row heights (see .dash-grid in style.css), so sizes
-// are what lets the widgets fit together like a puzzle: the sizes below add up to full rows
-// (row 1: glance 2 + since 1 + you 1; row 2: status 4; rows 3–4: tools 2 + momentum 2;
-// rows 5–6: answers 2 + kinds 1 + attention 1; row 7: milestones 4). Hidden widgets leave gaps that
-// later ones fill (grid-auto-flow: dense). On narrower screens widths are capped (2 columns, then 1).
+// Each: { id, title, why (what it's for: shown in the chooser), cols, build(d, ctx) → Node }
+// `cols` is how many of the grid's 4 columns the widget spans (1, 2 or 4). Row heights follow the
+// content (see .dash-grid in style.css), so widgets fill in reading order and every row is as tall
+// as its tallest member: nothing is clipped, and hidden widgets leave gaps that later ones fill
+// (grid-auto-flow: dense). On narrower screens the grid drops to 2 then 1 column.
 
 const WIDGETS = [
   {
     id: "since",
     title: "Since your last visit",
     why: "What changed while you were away",
-    size: [1, 1],
+    cols: 1,
     build: (d, { since }) => {
       if (!since) return empty("Your first visit: nothing to compare with yet.");
       const n = d.since?.changed ?? 0;
@@ -69,7 +68,7 @@ const WIDGETS = [
     id: "glance",
     title: "At a glance",
     why: "Headline numbers, linked to the list",
-    size: [2, 1],
+    cols: 2,
     build: (d) => {
       const tile = (n, label, href) => h("a", { class: "tile", href }, h("span", { class: "big" }, n), h("span", { class: "muted small" }, label));
       const s = d.by_status;
@@ -87,7 +86,7 @@ const WIDGETS = [
     id: "you",
     title: "Your impact",
     why: "Your own contributions (matched by display name)",
-    size: [1, 1],
+    cols: 1,
     build: (d, { role }) => {
       const y = d.you;
       if (!y) return empty(role === "view" ? "Personal stats need a display name, which only the edit link asks for." : "Set your display name to see your stats.");
@@ -110,7 +109,7 @@ const WIDGETS = [
     id: "status",
     title: "Questions by status",
     why: "How the questions are spread across statuses",
-    size: [4, 1],
+    cols: 4,
     build: (d) => {
       const total = d.totals.questions;
       if (!total) return empty("No questions yet.");
@@ -128,7 +127,7 @@ const WIDGETS = [
         h(
           "ul",
           { class: "legend" },
-          QUESTION_STATES.map((s) => h("li", null, h("a", { href: `#/list?lane=all&status=${s}` }, h("span", { class: `pill st-${s}` }, STATE_ICON[s], " ", STATE[s])), " ", h("strong", null, d.by_status[s]))),
+          QUESTION_STATES.map((s) => h("li", null, h("a", { href: `#/list?lane=all&status=${s}` }, h("span", { class: `pill st-${s}` }, STATE_ICON[s], " ", STATE[s])), h("strong", null, d.by_status[s]))),
         ),
       );
     },
@@ -137,7 +136,7 @@ const WIDGETS = [
     id: "tools",
     title: "Top tools used",
     why: "Which tools the group's processes run on",
-    size: [2, 2],
+    cols: 2,
     build: (d) => {
       const top = d.tools.slice(0, 5);
       const rows = top.map((t) => ({ label: t.name, n: t.questions, href: `#/list?lane=all&tool=${t.custom ? "custom" : t.id}`, note: t.custom ? "(custom)" : t.in_progress ? `· ${t.in_progress} in progress` : "" }));
@@ -157,7 +156,7 @@ const WIDGETS = [
     id: "kinds",
     title: "What kind of items",
     why: "Polls, pull requests, meetings…",
-    size: [1, 2],
+    cols: 1,
     build: (d) => {
       const rows = d.item_types.slice(0, 6).map((k) => ({ label: k.kind === "none" ? "No kind" : itemLabel(k.kind), n: k.questions, href: k.kind === "none" ? null : `#/list?lane=all&item_type=${encodeURIComponent(k.kind)}`, cls: k.kind === "none" ? "muted-fill" : "" }));
       return rows.length ? barRows(rows) : empty("No questions yet.");
@@ -167,7 +166,7 @@ const WIDGETS = [
     id: "momentum",
     title: "Momentum, last 12 weeks",
     why: "Questions added and answered, week by week",
-    size: [2, 2],
+    cols: 2,
     build: (d) => {
       const max = Math.max(1, ...d.weekly.flatMap((w) => [w.added, w.answered]));
       const col = (n, cls, label) => {
@@ -191,9 +190,9 @@ const WIDGETS = [
         h("div", { class: "axis muted small" }, h("span", null, fmtShortDate(d.weekly[0].start)), h("span", null, "this week")),
         h(
           "p",
-          { class: "small" },
-          h("span", { class: "key added" }), ` Added (${addedTotal})  `,
-          h("span", { class: "key answered" }), ` Answered (${answeredTotal})`,
+          { class: "small mlabels" },
+          h("span", null, h("span", { class: "key added" }), ` Added (${addedTotal})`),
+          h("span", null, h("span", { class: "key answered" }), ` Answered (${answeredTotal})`),
         ),
         h(
           "p",
@@ -209,7 +208,7 @@ const WIDGETS = [
     id: "attention",
     title: "Needs attention",
     why: "Where a nudge would help most",
-    size: [1, 2],
+    cols: 1,
     build: (d) => {
       const a = d.attention;
       const item = (n, text, href) => h("li", { class: n ? "todo" : "ok" }, h("span", { "aria-hidden": "true" }, n ? "● " : "✓ "), n ? [h("a", { href }, plural(n, "question")), ` ${text}`] : `None ${text}`);
@@ -231,7 +230,7 @@ const WIDGETS = [
     id: "answers",
     title: "Recently answered",
     why: "A wall of wins: the last questions that got an answer",
-    size: [2, 2],
+    cols: 2,
     build: (d) =>
       d.recent_answers.length
         ? h("ul", { class: "plain" }, d.recent_answers.map((a) => h("li", null, statusPill(a.status, a.status_label), " ", h("a", { href: `#/q/${a.id}` }, a.title), " ", h("span", { class: "muted small" }, time(a.at, timeAgo(a.at))))))
@@ -241,7 +240,7 @@ const WIDGETS = [
     id: "milestones",
     title: "Milestones",
     why: "Little group achievements to unlock",
-    size: [4, 1],
+    cols: 4,
     build: (d) => {
       const done = d.milestones.filter((m) => m.done).length;
       return h(
@@ -283,8 +282,7 @@ export function dashboardPage(d, ctx) {
       body = h("p", { class: "error" }, `This widget failed: ${e.message}`);
     }
     const hide = h("button", { type: "button", class: "link muted small widget-hide", title: "Hide this widget (bring it back with “Choose widgets”)", "aria-label": `Hide “${w.title}”`, onclick: () => (hidden.add(w.id), save(), apply(w.id), sync(w.id)) }, "Hide");
-    const [cols, rows] = w.size;
-    const sec = h("section", { class: `panel widget c${cols} r${rows}`, "aria-labelledby": `w-${w.id}` }, h("div", { class: "widget-head" }, h("h2", { id: `w-${w.id}` }, w.title), hide), h("div", { class: "widget-body" }, body));
+    const sec = h("section", { class: `panel widget c${w.cols}`, "aria-labelledby": `w-${w.id}` }, h("div", { class: "widget-head" }, h("h2", { id: `w-${w.id}` }, w.title), hide), h("div", { class: "widget-body" }, body));
     sections.set(w.id, sec);
     apply(w.id);
   }
@@ -308,5 +306,5 @@ export function dashboardPage(d, ctx) {
       }),
     ),
   );
-  return h("div", null, ctx.back, h("h1", null, "Dashboard"), h("p", { class: "muted" }, `A summary of ${ctx.name}.`), chooser, h("div", { class: "dash-grid" }, [...sections.values()]));
+  return h("div", null, ctx.back, h("h1", null, "Dashboard"), chooser, h("div", { class: "dash-grid" }, [...sections.values()]));
 }

@@ -278,33 +278,87 @@ body.dropping::after {
 .space-name:hover { text-decoration: underline; }
 
 /* Dashboard */
-/* Fixed-size cells so widgets pack like a puzzle: 4 columns × 168px rows; each widget spans c{cols} × r{rows}. */
-.dash-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 168px; grid-auto-flow: row dense; gap: 12px; }
-.widget { margin: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+/* Widgets flow in a 4-column grid. Row heights follow the content — no fixed
+   cells and no inner scrollbars: every row is as tall as its tallest widget and
+   the others in that row stretch to match, so nothing gets clipped. Each widget
+   spans 1, 2 or 4 columns (c1/c2/c4); on narrower screens the grid drops to 2
+   then 1 column and the spans collapse. */
+.dash-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: auto; grid-auto-flow: row dense; gap: 12px; align-items: stretch; }
+.widget { margin: 0; display: flex; flex-direction: column; min-height: 0; }
 .widget[hidden] { display: none; }
-.widget-body { flex: 1; min-height: 0; overflow: auto; }
+.widget-body { flex: 1; min-width: 0; }
 .c1 { grid-column: span 1; } .c2 { grid-column: span 2; } .c4 { grid-column: span 4; }
-.r1 { grid-row: span 1; } .r2 { grid-row: span 2; }
-@media (max-width: 860px) { .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .c4 { grid-column: span 2; } }
-@media (max-width: 560px) {
-  .dash-grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; }
-  .c1, .c2, .c4 { grid-column: 1 / -1; } .r1, .r2 { grid-row: auto; }
-  .widget { overflow: visible; } .widget-body { overflow: visible; }
+@media (max-width: 1024px) {
+  .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .c1, .c2 { grid-column: span 1; } .c4 { grid-column: span 2; }
 }
-.widget-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+@media (max-width: 640px) {
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+  .c1, .c2, .c4 { grid-column: 1 / -1; }
+}
+.widget-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.widget-head h2 { margin: 0; }
 .widget-hide { min-height: 0; padding: 0 4px; opacity: .7; }
 .widget:hover .widget-hide, .widget-hide:focus-visible { opacity: 1; }
 .widget-choice { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 2px 12px; }
 .widget-choice label { align-items: flex-start; }
+
+/* Big numbers and tiles (At a glance, Your impact) */
 .big { font-size: 1.8rem; font-weight: 700; line-height: 1.15; margin: 0; display: block; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 8px; }
 .tiles.compact .big { font-size: 1.4rem; }
 .tile { display: flex; flex-direction: column; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); text-decoration: none; color: var(--ink); }
 a.tile:hover { border-color: var(--muted); }
-.bar-rows, .plain, .checks, .legend, .badges-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 6px; margin-bottom: 4px; }
-.ms { display: flex; gap: 6px; align-items: baseline; padding: 4px 8px; border: 1px dashed var(--line); border-radius: 8px; opacity: .65; font-size: .9rem; }
+
+/* Lists shared by the widgets */
+.bar-rows, .plain, .checks, .legend, .badges-grid { list-style: none; margin: 0; padding: 0; }
+
+/* A labelled bar: name and count on one line, the bar across the full width below. */
+.bar-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 3px; align-items: baseline; margin: 8px 0; font-size: .92rem; }
+.bar-rows li:first-child { margin-top: 0; }
+.bar-label { min-width: 0; overflow-wrap: anywhere; }
+.bar-label a { text-decoration: none; }
+.bar-label a:hover { text-decoration: underline; }
+.bar-n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.bar { grid-column: 1 / -1; display: block; height: 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--accent); }
+.bar-fill.muted-fill { background: var(--muted); opacity: .45; }
+.bar-fill.done { background: var(--st-accepted-ink); }
+
+/* Status strip and its legend */
+.stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+.seg { display: block; flex-basis: 0; min-width: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 12px 0 0; font-size: .9rem; }
+.legend li { display: inline-flex; align-items: center; gap: 5px; }
+.legend a { text-decoration: none; }
+.legend strong { font-variant-numeric: tabular-nums; }
+
+/* Momentum bars, one group per week */
+.momentum { display: flex; align-items: flex-end; gap: 4px; height: 96px; border-bottom: 1px solid var(--line); }
+.mweek { flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
+.mcol { display: block; width: 42%; max-width: 14px; border-radius: 3px 3px 0 0; }
+.mcol.added, .key.added { background: var(--muted); opacity: .6; }
+.mcol.answered, .key.answered { background: var(--accent); }
+.key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: baseline; }
+.axis { display: flex; justify-content: space-between; margin-top: 3px; }
+.mlabels { display: flex; flex-wrap: wrap; gap: 2px 18px; margin: 8px 0 0; }
+
+/* Needs attention */
+.checks li { padding: 4px 0; font-size: .92rem; }
+.checks .todo span { color: var(--warn); }
+.checks .ok { color: var(--muted); }
+
+/* Recently answered */
+.plain li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
+.plain li:first-child { padding-top: 0; }
+.plain li:last-child { border-bottom: none; }
+
+/* Milestones */
+.badges-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 8px; }
+.ms { display: flex; gap: 8px; align-items: center; padding: 7px 10px; border: 1px dashed var(--line); border-radius: 8px; opacity: .65; font-size: .9rem; }
 .ms.done { opacity: 1; border-style: solid; border-color: var(--accent); background: var(--bg); }
-.ms-icon { font-size: 1rem; }
+.ms .muted { margin-left: auto; }
+.ms-icon { font-size: 1.1rem; }
 
 /* Menu (top right) and view toggle */
 .menu { position: relative; }

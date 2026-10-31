@@ -137,7 +137,7 @@ test("dashboard renders its widgets; hiding one is remembered and can be undone"
   const titles = [...main.querySelectorAll(".widget h2")].map((x: any) => x.textContent);
   for (const w of ["At a glance", "Top tools used", "Questions by status", "Needs attention", "Your impact", "Milestones", "Momentum, last 12 weeks"]) assert.ok(titles.includes(w), w);
   for (const w of ["Activity", "Who's active", "Monthly goal"]) assert.ok(!titles.includes(w), `${w} was removed`);
-  assert.ok([...main.querySelectorAll(".widget")].every((el: any) => /\bc[124]\b/.test(el.className) && /\br[12]\b/.test(el.className)), "every widget has a fixed size");
+  assert.ok([...main.querySelectorAll(".widget")].every((el: any) => /\bc[124]\b/.test(el.className)), "every widget declares how many columns it spans");
   assert.ok(main.querySelector('.widget a[href="#/list?lane=all&tool=custom"]'), "tools link to the filtered list");
   assert.match(main.textContent!, /asked/, "personal widget uses the display name");
   (main.querySelector(".widget-hide") as any).click();

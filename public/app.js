@@ -197,6 +197,7 @@ function header(section) {
     {
       type: "button",
       class: "menu-btn",
+      "aria-label": "Menu",
       "aria-haspopup": "menu",
       "aria-expanded": "false",
       onclick: () => {
@@ -206,7 +207,6 @@ function header(section) {
       },
     },
     h("span", { class: "burger", "aria-hidden": "true" }, h("i"), h("i"), h("i")),
-    " Menu",
   );
   return h(
     "header",
