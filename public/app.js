@@ -28,7 +28,7 @@ const canEditQ = (q) => canEdit() && !q.removed_at;
 async function loadSpace() {
   const d = await api("GET", "space");
   Object.assign(S, d);
-  document.title = `${S.space.name} · Group Matters`;
+  if (!document.title.includes("·")) document.title = `${S.space.name} · Group Matters`;
 }
 
 async function boot() {
@@ -58,10 +58,10 @@ async function boot() {
 function askName() {
   return new Promise((resolve) => {
     const input = h("input", { type: "text", maxlength: 60, value: getName(), required: true, autocomplete: "nickname", "aria-label": "Display name" });
-    const close = () => (overlay.remove(), resolve());
-    const overlay = h(
-      "div",
-      { class: "overlay", role: "dialog", "aria-modal": "true", "aria-labelledby": "name-title" },
+    const close = () => (dialog.close(), dialog.remove(), resolve());
+    const dialog = h(
+      "dialog",
+      { class: "modal-dialog", "aria-labelledby": "name-title", oncancel: (e) => (!getName() ? e.preventDefault() : (dialog.remove(), resolve())) },
       h(
         "form",
         {
@@ -82,7 +82,8 @@ function askName() {
         h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Continue"), getName() ? h("button", { type: "button", onclick: close }, "Cancel") : null),
       ),
     );
-    document.body.append(overlay);
+    document.body.append(dialog);
+    dialog.showModal();
     input.focus();
   });
 }
@@ -150,6 +151,37 @@ function parseHash() {
 }
 
 let renderSeq = 0;
+let lastPageKey = null;
+
+const PAGE_TITLES = { list: "Matters", dashboard: "Dashboard", rules: "Tools", activity: "Activity", how: "How this works" };
+
+/** The page's <h1> (a visually hidden one when the page has none) and its text. */
+function pageHeading(parts, view) {
+  let h1 = document.querySelector("main h1");
+  if (!h1) {
+    h1 = h("h1", { class: "visually-hidden" }, PAGE_TITLES[parts[0] ?? "list"] ?? "Group Matters");
+    document.getElementById("main").prepend(h1);
+  }
+  if (!h1.textContent.trim()) h1.textContent = PAGE_TITLES[parts[0] ?? "list"] ?? "Group Matters";
+  return h1;
+}
+
+/** Identify a focused control well enough to find it again after a re-render. */
+function focusKey(el) {
+  if (!el || el === document.body || !app.contains(el)) return null;
+  const text = el.id || el.getAttribute("aria-label") || el.getAttribute("name") || el.getAttribute("href") || el.textContent.trim().slice(0, 60);
+  if (!text) return null;
+  const same = [...app.querySelectorAll(el.tagName)].filter((x) => (x.id || x.getAttribute("aria-label") || x.getAttribute("name") || x.getAttribute("href") || x.textContent.trim().slice(0, 60)) === text);
+  return { tag: el.tagName, text, nth: same.indexOf(el), value: "value" in el ? el.value : null, sel: el.selectionStart ?? null };
+}
+
+function restoreFocus(k) {
+  const same = [...app.querySelectorAll(k.tag)].filter((x) => (x.id || x.getAttribute("aria-label") || x.getAttribute("name") || x.getAttribute("href") || x.textContent.trim().slice(0, 60)) === k.text);
+  const el = same[Math.min(k.nth, same.length - 1)];
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  if (k.sel != null && k.value === el.value) try { el.setSelectionRange(k.sel, k.sel); } catch {}
+}
 async function render() {
   const seq = ++renderSeq;
   let { parts, params } = parseHash();
@@ -168,9 +200,22 @@ async function render() {
     view = h("div", { class: "panel error" }, h("h2", null, "Something went wrong"), h("p", null, e.message));
   }
   if (seq !== renderSeq) return;
+  // Same page re-rendered (refresh, filter): keep focus where it was. New page: focus its heading.
+  const pageKey = parts.join("/");
+  const samePage = pageKey === lastPageKey;
+  const keep = samePage ? focusKey(document.activeElement) : null;
+  const firstLoad = lastPageKey === null;
+  lastPageKey = pageKey;
   app.replaceChildren(header(parts[0] ?? "list"), h("main", { id: "main" }, view));
+  const heading = pageHeading(parts, view);
+  document.title = `${heading.textContent} · ${S.space.name} · Group Matters`;
+  if (keep) restoreFocus(keep);
+  else if (!firstLoad) {
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: false });
+  }
   if (!parts[0] || parts[0] === "list") {
-    document.getElementById("composer-input")?.focus({ preventScroll: true });
+    if (firstLoad) document.getElementById("composer-input")?.focus({ preventScroll: true });
     if (canEdit()) onLinkDrop = fillComposer;
     if (pendingDrop && fillComposer(pendingDrop)) pendingDrop = null;
   }
@@ -183,15 +228,15 @@ async function refresh() {
 }
 
 function header(section) {
-  const item = (key, label) => h("a", { href: `#/${key}`, role: "menuitem", "aria-current": section === key ? "page" : null, onclick: closeMenus }, label);
+  const item = (key, label) => h("a", { href: `#/${key}`, "aria-current": section === key ? "page" : null, onclick: closeMenus }, label);
   const list = h(
     "div",
-    { class: "menu-list", role: "menu", hidden: true },
+    { class: "menu-list", hidden: true },
     item("dashboard", "Dashboard"),
     item("rules", "Tools"),
     item("activity", "Activity"),
     item("how", "How this works"),
-    h("button", { type: "button", role: "menuitem", onclick: () => (closeMenus(), downloadExport()) }, "Export"),
+    h("button", { type: "button", onclick: () => (closeMenus(), downloadExport()) }, "Export"),
   );
   const button = h(
     "button",
@@ -199,7 +244,6 @@ function header(section) {
       type: "button",
       class: "menu-btn",
       "aria-label": "Menu",
-      "aria-haspopup": "menu",
       "aria-expanded": "false",
       onclick: () => {
         const wasClosed = list.hidden;

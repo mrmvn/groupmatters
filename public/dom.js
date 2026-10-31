@@ -63,16 +63,21 @@ export function timeAgo(iso) {
 export const time = (iso, label) => h("time", { datetime: iso, title: fmtDate(iso) }, label ?? fmtDate(iso));
 
 let toastTimer;
+/** Status toasts fade after a few seconds; errors are announced as alerts and stay until dismissed. */
 export function toast(message, kind = "info") {
   let el = document.getElementById("toast");
   if (!el) {
-    el = h("div", { id: "toast", role: "status", "aria-live": "polite" });
+    el = h("div", { id: "toast" });
     document.body.append(el);
   }
-  el.textContent = message;
+  const error = kind === "error";
+  el.setAttribute("role", error ? "alert" : "status");
+  el.setAttribute("aria-live", error ? "assertive" : "polite");
+  const dismiss = () => (el.className = "toast");
+  el.replaceChildren(h("span", null, message), error ? h("button", { type: "button", class: "toast-close", "aria-label": "Dismiss", onclick: dismiss }, "✕") : null);
   el.className = `toast show ${kind}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.className = "toast"), kind === "error" ? 7000 : 3500);
+  if (!error) toastTimer = setTimeout(dismiss, 3500);
 }
 
 export function debounce(fn, ms) {
