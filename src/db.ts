@@ -141,6 +141,8 @@ export const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   (db) => typedFields(db),
   // v9: the OpaVote tool joins every space's tool list.
   (db) => addSeedTool(db, "opavote"),
+  // v10: the view token is also kept readable, so the edit link can show and offer the view link (null for older spaces until it is rotated).
+  `ALTER TABLE spaces ADD COLUMN view_token TEXT;`,
 ];
 
 /**

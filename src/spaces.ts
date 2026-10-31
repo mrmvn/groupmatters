@@ -23,20 +23,20 @@ export function createSpace(ctx: Ctx, nameIn: string) {
   const editToken = generateToken();
   const viewToken = generateToken();
   tx(ctx.db, () => {
-    repo.insertSpace(ctx.db, space, hashToken(editToken), hashToken(viewToken));
+    repo.insertSpace(ctx.db, space, hashToken(editToken), viewToken);
     for (const t of SEED_TOOLS) repo.insertTool(ctx.db, space.id, structuredClone(t));
     repo.logEvent(ctx, { space_id: space.id, actor: "operator", action: "space.created", data: { name } });
   });
   return { space, editToken, viewToken };
 }
 
-export function rotateLink(ctx: Ctx, spaceId: string, which: Role) {
+export function rotateLink(ctx: Ctx, spaceId: string, which: Role, actor = "operator") {
   const space = repo.getSpace(ctx.db, spaceId);
   if (!space) throw new Error(`No space with id ${spaceId}`);
   const token = generateToken();
   tx(ctx.db, () => {
-    repo.setSpaceTokenHash(ctx.db, spaceId, which, hashToken(token));
-    repo.logEvent(ctx, { space_id: spaceId, actor: "operator", action: "link.rotated", data: { which } });
+    repo.setSpaceToken(ctx.db, spaceId, which, token);
+    repo.logEvent(ctx, { space_id: spaceId, actor, action: "link.rotated", data: { which } });
   });
   return token;
 }

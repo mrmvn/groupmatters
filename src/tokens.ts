@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-/** 256-bit random token, URL-safe. */
-export const generateToken = () => randomBytes(32).toString("base64url");
+/** 96-bit random token, URL-safe, 16 characters (short enough to read out and share; links made before had 256 bits / 43 characters). */
+export const generateToken = () => randomBytes(12).toString("base64url");
 
 /**
  * Tokens are high-entropy random values, so a fast hash (SHA-256) is sufficient:
@@ -15,4 +15,4 @@ export function safeEqualHex(a: string, b: string): boolean {
   return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
-export const looksLikeToken = (s: string) => /^[A-Za-z0-9_-]{40,64}$/.test(s);
+export const looksLikeToken = (s: string) => /^[A-Za-z0-9_-]{16,64}$/.test(s);

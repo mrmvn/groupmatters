@@ -52,6 +52,7 @@ g.fetch = async (url: string, init: any = {}) => {
 const origError = console.error;
 console.error = (...a: unknown[]) => (errors.push(a.map(String).join(" ")), origError(...a));
 store.set("qr:name", "Ana");
+store.set(`qr:mode:${demo.space.id}`, "edit"); // linkedom has no <dialog>: skip the edit/view choice
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function settle() {
@@ -93,12 +94,12 @@ test("every lane renders", async () => {
   assert.ok(document.querySelector('main .sublane.current[href*="lane=all"]'), "the chosen lane is marked");
 });
 
-test("header: no tabs; the space name opens the items; the menu has Dashboard, Tools, Activity, How this works, Export", async () => {
+test("header: no tabs; the space name opens the items; the menu has Dashboard, Tools, Activity, How this works, Export, Share (edit link)", async () => {
   await go("#/list?lane=ended");
   assert.equal(document.querySelectorAll("header .tab, header nav").length, 0, "no tabs");
   assert.equal(document.querySelector("header a.space-name")!.getAttribute("href"), "#/list");
   const items = [...document.querySelectorAll("header .menu .menu-list > *")] as any[];
-  assert.deepEqual(items.map((a) => a.textContent), ["Dashboard", "Tools", "Activity", "How this works", "Export"]);
+  assert.deepEqual(items.map((a) => a.textContent), ["Dashboard", "Tools", "Activity", "How this works", "Export", "Share…"]);
   assert.deepEqual(items.slice(0, 4).map((a) => a.getAttribute("href")), ["#/dashboard", "#/rules", "#/activity", "#/how"]);
   // The menu opens on its button and closes again.
   const list = document.querySelector(".menu-list") as any;

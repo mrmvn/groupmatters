@@ -41,6 +41,7 @@ async function boot() {
   const key = `qr:seen:${S.space.id}`;
   S.since = localStorage.getItem(key);
   localStorage.setItem(key, new Date().toISOString());
+  if (canEdit()) await chooseMode();
   if (canEdit() && !getName()) await askName();
   if (canEdit()) installLinkDrop();
   window.addEventListener("hashchange", render);
@@ -58,6 +59,77 @@ async function boot() {
     (open?.parentElement.querySelector(".menu-btn") ?? dd?.querySelector(".dd-btn"))?.focus();
   });
   render();
+}
+
+/**
+ * Opening the edit link: choose to edit or to stay a viewer (which moves to the view link, so no name is asked and the
+ * edit link isn't left in the address bar). "Edit" is remembered on this device. Not a permission: the edit link
+ * can always edit; sharing the view link is what keeps people read-only.
+ */
+function chooseMode() {
+  const key = `qr:mode:${S.space.id}`;
+  if (!S.view_token || localStorage.getItem(key) === "edit") return Promise.resolve();
+  return new Promise((resolve) => {
+    const dialog = h(
+      "dialog",
+      { class: "modal-dialog", "aria-labelledby": "mode-title", oncancel: (e) => e.preventDefault() },
+      h(
+        "div",
+        { class: "panel modal" },
+        h("h2", { id: "mode-title" }, S.space.name),
+        h("p", null, "You opened the edit link. Do you want to change things, or just look?"),
+        h(
+          "div",
+          { class: "row" },
+          h("button", { type: "button", class: "primary", onclick: () => (localStorage.setItem(key, "edit"), dialog.close(), dialog.remove(), resolve()) }, "Edit"),
+          h("button", { type: "button", onclick: () => location.replace(`/s/${S.view_token}${location.hash}`) }, "View only"),
+        ),
+        h("p", { class: "muted small" }, "Viewing needs no name. Editing is remembered on this device."),
+      ),
+    );
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
+/** Share dialog (edit link): the view link to hand out widely, and this edit link for those who should change things. */
+function shareDialog() {
+  const origin = location.origin;
+  const editUrl = `${origin}/s/${TOKEN}`;
+  const row = (label, note, url) => {
+    const input = h("input", { type: "text", readonly: true, value: url, "aria-label": label, onfocus: (e) => e.target.select() });
+    return h(
+      "div",
+      null,
+      h("h3", null, label),
+      h("p", { class: "muted small" }, note),
+      h("div", { class: "row" }, input, h("button", { type: "button", onclick: async () => { try { await navigator.clipboard.writeText(url); toast("Link copied", "ok"); } catch { input.select(); toast("Press Ctrl/Cmd+C to copy", "info"); } } }, "Copy")),
+    );
+  };
+  const body = h("div", { class: "panel modal" }, h("h2", { id: "share-title" }, "Share this space"));
+  const fill = () => {
+    body.replaceChildren(
+      h("h2", { id: "share-title" }, "Share this space"),
+      S.view_token
+        ? row("View link", "Read only, no name needed. Safe to post for everyone.", `${origin}/s/${S.view_token}`)
+        : h(
+            "div",
+            null,
+            h("h3", null, "View link"),
+            h("p", { class: "muted small" }, "This space's existing view link was made before it could be shown here. Creating a new one stops the old one working."),
+            h("button", { type: "button", onclick: async () => {
+              if (!confirm("Create a new view link? The current view link will stop working.")) return;
+              const r = await act(() => api("POST", "view-link", {}));
+              if (r) (S.view_token = r.view_token, fill());
+            } }, "Create a view link"),
+          ),
+      row("Edit link", "Anyone with it can change things. Give it only to people who should edit.", editUrl),
+    );
+  };
+  fill();
+  const dialog = h("dialog", { class: "modal-dialog", "aria-labelledby": "share-title", oncancel: () => dialog.remove(), onclick: (e) => e.target === dialog && (dialog.close(), dialog.remove()) }, body);
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 function askName() {
@@ -243,6 +315,7 @@ function header(section) {
     item("activity", "Activity"),
     item("how", "How this works"),
     h("button", { type: "button", onclick: () => (closeMenus(), downloadExport()) }, "Export"),
+    canEdit() ? h("button", { type: "button", onclick: () => (closeMenus(), shareDialog()) }, "Share…") : null,
   );
   const button = h(
     "button",

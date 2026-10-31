@@ -48,6 +48,23 @@ test("edit vs view links", async () => {
   assert.equal(ok.json.activity[0].actor, "Ana");
 });
 
+test("short tokens; the edit link (only) shows the view link and can replace it", async () => {
+  const { editToken, viewToken } = makeSpace(t.ctx); // its own space: the view link is replaced below
+  assert.equal(editToken.length, 16);
+  const e = await api(editToken, "GET", "space");
+  assert.equal(e.json.view_token, viewToken);
+  assert.equal((await api(viewToken, "GET", "space")).json.view_token, undefined, "viewers don't get it");
+  assert.equal((await api(viewToken, "POST", "view-link", {})).status, 403);
+  const r = await api(editToken, "POST", "view-link", {});
+  assert.equal(r.status, 200);
+  assert.notEqual(r.json.view_token, viewToken);
+  assert.equal((await api(viewToken, "GET", "space")).status, 404, "old view link revoked");
+  assert.equal((await api(r.json.view_token, "GET", "space")).json.role, "view");
+  assert.equal((await api(editToken, "GET", "space")).json.view_token, r.json.view_token);
+  t.ctx.db.prepare("UPDATE spaces SET view_token = NULL").run(); // a space from before migration 10
+  assert.equal((await api(editToken, "GET", "space")).json.view_token, null);
+});
+
 test("writes need a display name; non-ASCII names work", async () => {
   const r = await api(editToken, "POST", "questions", { title: "x" }, null);
   assert.equal(r.status, 400);

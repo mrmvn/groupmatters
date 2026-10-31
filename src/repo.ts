@@ -23,11 +23,17 @@ function rowToSpace(r: Row): Space {
   };
 }
 
-export function insertSpace(db: DatabaseSync, space: Space, editHash: string, viewHash: string) {
+export function insertSpace(db: DatabaseSync, space: Space, editHash: string, viewToken: string) {
   db.prepare(
-    `INSERT INTO spaces (id, name, created_at, settings_json, charter_markdown, edit_token_hash, view_token_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(space.id, space.name, space.created_at, JSON.stringify(space.settings), space.charter_markdown, editHash, viewHash);
+    `INSERT INTO spaces (id, name, created_at, settings_json, charter_markdown, edit_token_hash, view_token_hash, view_token)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(space.id, space.name, space.created_at, JSON.stringify(space.settings), space.charter_markdown, editHash, hashToken(viewToken), viewToken);
+}
+
+/** The view token, when known (spaces made before migration 10 only have its hash). */
+export function getViewToken(db: DatabaseSync, id: string): string | null {
+  const r = db.prepare("SELECT view_token FROM spaces WHERE id = ?").get(id) as Row | undefined;
+  return (r?.view_token as string | null | undefined) ?? null;
 }
 
 export function getSpace(db: DatabaseSync, id: string): Space | undefined {
@@ -48,9 +54,9 @@ export function updateSpace(db: DatabaseSync, space: Space) {
   );
 }
 
-export function setSpaceTokenHash(db: DatabaseSync, id: string, which: Role, hash: string) {
-  const col = which === "edit" ? "edit_token_hash" : "view_token_hash";
-  db.prepare(`UPDATE spaces SET ${col} = ? WHERE id = ?`).run(hash, id);
+export function setSpaceToken(db: DatabaseSync, id: string, which: Role, token: string) {
+  if (which === "edit") db.prepare("UPDATE spaces SET edit_token_hash = ? WHERE id = ?").run(hashToken(token), id);
+  else db.prepare("UPDATE spaces SET view_token_hash = ?, view_token = ? WHERE id = ?").run(hashToken(token), token, id);
 }
 
 /** Resolve a URL token to a space and role. */

@@ -13,6 +13,7 @@ import { arrange, roleOf, ROLES } from "../relations.ts";
 import { dashboard } from "../dashboard.ts";
 import { withFields } from "../fields.ts";
 import { adapterIds, getAdapter } from "../adapters/index.ts";
+import { rotateLink } from "../spaces.ts";
 import { forbidden, HttpError, notFound, bad } from "../util.ts";
 
 export type ApiReq = {
@@ -129,6 +130,8 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     return {
       space: repo.getSpace(ctx.db, space.id),
       role: r.role,
+      // Only the edit link sees the view link (to share it); null when it predates migration 10.
+      view_token: r.role === "edit" ? repo.getViewToken(ctx.db, space.id) : undefined,
       tools: toolsView(ctx, space, used.tools),
       custom_kinds: used.custom,
       adapters: adapterIds(),
@@ -136,6 +139,8 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
       now: ctx.now().toISOString(),
     };
   }
+  // Replace the view link (the old one stops working). Edit link only, like every write.
+  if (method === "POST" && a === "view-link" && !id) return { view_token: rotateLink(ctx, space.id, "view", actor) };
   if (method === "GET" && a === "activity" && !id) {
     const before = Number(r.query.get("before")) || undefined;
     const limit = Math.min(Number(r.query.get("limit")) || 100, MAX_ACTIVITY_LIMIT);
