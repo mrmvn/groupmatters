@@ -1,0 +1,10 @@
+# /etc/caddy/Caddyfile
+# No `log` directive on purpose: space links are secrets in the URL path.
+groupmatters.org {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+www.groupmatters.org {
+	redir https://groupmatters.org{uri} permanent
+}

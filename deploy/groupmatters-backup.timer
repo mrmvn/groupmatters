@@ -1,0 +1,11 @@
+# /etc/systemd/system/groupmatters-backup.timer
+[Unit]
+Description=Daily Group Matters backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

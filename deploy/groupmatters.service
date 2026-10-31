@@ -1,0 +1,40 @@
+# /etc/systemd/system/groupmatters.service
+[Unit]
+Description=Group Matters
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=groupmatters
+Group=groupmatters
+WorkingDirectory=/opt/groupmatters
+# Secrets and config live outside the code directory (see deploy/README.md)
+EnvironmentFile=/etc/groupmatters.env
+Environment=NODE_ENV=production HOST=127.0.0.1 PORT=3000 DB_PATH=/var/lib/groupmatters/register.sqlite
+# Path from `command -v node` on the VPS
+ExecStart=/usr/bin/node src/main.ts
+Restart=on-failure
+RestartSec=3
+
+# Creates /var/lib/groupmatters owned by the service user
+StateDirectory=groupmatters
+StateDirectoryMode=0750
+
+# Hardening (MemoryDenyWriteExecute is deliberately not set: V8 needs JIT)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

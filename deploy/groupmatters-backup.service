@@ -1,0 +1,14 @@
+# /etc/systemd/system/groupmatters-backup.service
+[Unit]
+Description=Group Matters SQLite backup
+
+[Service]
+Type=oneshot
+User=groupmatters
+Group=groupmatters
+StateDirectory=groupmatters
+ExecStart=/opt/groupmatters/deploy/backup.sh
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

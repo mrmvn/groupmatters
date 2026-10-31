@@ -6,7 +6,6 @@ ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 DB_PATH=/data/register.sqlite
 COPY package.json ./
 COPY src ./src
 COPY public ./public
-COPY seed ./seed
 RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME ["/data"]
