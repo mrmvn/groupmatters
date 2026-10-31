@@ -1,0 +1,100 @@
+{
+ "contests": [
+  {
+   "candidates": [
+    "Yes, approve",
+    "No, disapprove"
+   ],
+   "description": "<p>This is the first contest in this election. Here, we are deciding whether to approve a board decision using plurality voting. In this example, the voter is required to select a choice, but you can also allow voters to cast empty votes.</p>",
+   "is_checkbox": true,
+   "is_ranked": false,
+   "max_selections": 1,
+   "method": "Plurality/FPTP/SNTV",
+   "n_seats": 1,
+   "require_full": "yes",
+   "shuffle_cand": "no",
+   "title": "Approve Board Decision"
+  },
+  {
+   "candidates": [
+    "George Washington",
+    "John Adams",
+    "Thomas Jefferson",
+    "James Madison",
+    "James Monroe"
+   ],
+   "description": "<p>This second contest is for electing a president using instant runoff voting.</p>",
+   "is_checkbox": false,
+   "is_ranked": true,
+   "max_selections": 5,
+   "method": "Instant Runoff Voting",
+   "n_seats": 1,
+   "require_full": "no",
+   "shuffle_cand": "yes",
+   "title": "President"
+  },
+  {
+   "candidates": [
+    "W. E. B. Du Bois",
+    "Mary White Ovington",
+    "Moorfield Storey",
+    "Ida B. Wells",
+    "Lillian Wald",
+    "Henry Moskowitz"
+   ],
+   "description": "<p>This third contest is for electing two people to an executive committee using the single transferable vote.</p>",
+   "is_checkbox": false,
+   "is_ranked": true,
+   "max_selections": 6,
+   "method": "Scottish STV",
+   "n_seats": 2,
+   "require_full": "no",
+   "shuffle_cand": "yes",
+   "title": "Executive Committee"
+  },
+  {
+   "candidates": [
+    "Lionel Messi",
+    "Cristiano Ronaldo",
+    "Pele",
+    "Zinedine Zidane",
+    "Diego Maradona"
+   ],
+   "description": "<p>This fourth contest is to select a most valuable player of a sports team using Condorcet voting.</p>",
+   "is_checkbox": false,
+   "is_ranked": true,
+   "max_selections": 5,
+   "method": "Condorcet Beatpath",
+   "n_seats": 1,
+   "require_full": "no",
+   "shuffle_cand": "yes",
+   "title": "Most Valuable Player"
+  },
+  {
+   "candidates": [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday"
+   ],
+   "description": "<p>This fifth contest is to select a day for lunch among colleagues using approval voting.</p>",
+   "is_checkbox": true,
+   "is_ranked": false,
+   "max_selections": 5,
+   "method": "Approval Voting",
+   "n_seats": 1,
+   "require_full": "no",
+   "shuffle_cand": "no",
+   "title": "Select Day for Lunch"
+  }
+ ],
+ "description": "<p>This is a demonstration election to show some of the features of OpaVote. There are five contests illustrating different voting methods supported by OpaVote. In your own elections, you can customize this text, use <b>rich</b> <i>formatting</i>, and include pictures. Below, you can also see example reports showing the results of this election so far.</p>",
+ "eid": 5654402576678912,
+ "error": false,
+ "mode": "poll",
+ "poll_registration": "none",
+ "show_results": "yes",
+ "status": "VOTING",
+ "title": "OpaVote Demonstration Election"
+}

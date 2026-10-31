@@ -104,6 +104,7 @@ import { normalizePoll, normalizeDiscussion, loomio } from "../src/adapters/loom
 import { normalizeConversation, polis } from "../src/adapters/polis.ts";
 import { normalizePost, metaculus } from "../src/adapters/metaculus.ts";
 import { iso } from "../src/adapters/common.ts";
+import { normalizeItem, opavote } from "../src/adapters/opavote.ts";
 
 test("Loomio poll normalization (recorded fixture): closed → concluded, results summary, last activity from the thread", () => {
   const f = normalizePoll(fixture("loomio_poll_closed.json"), new Date("2026-10-01T00:00:00Z"));
@@ -330,4 +331,35 @@ test("Consul fetch: tries snake_case when camelCase only returns id/title", asyn
   const r = await C.consul.fetch(C.consul.parse("https://www.sammenomaarhus.dk/proposals/1", t.ctx)!, t.ctx);
   assert.ok(!r.notModified && r.fetched.outcome_summary === "Open · 0 supports · 0 comments");
   assert.ok(t.calls.every((u) => u.startsWith("https://www.sammenomaarhus.dk/graphql?query=")));
+});
+
+test("OpaVote normalization (recorded fixture), links and errors", async () => {
+  const f = normalizeItem(fixture("opavote_poll_voting.json"));
+  assert.equal(f.state, "open");
+  assert.equal(f.terminal, false);
+  assert.equal(f.title, "OpaVote Demonstration Election");
+  assert.match(f.outcome_summary!, /^Poll open for voting · 5 contests \(Plurality\/FPTP\/SNTV, Instant Runoff Voting/);
+  assert.equal(f.extra?.results_url, "https://opavote.com/results/5654402576678912/1");
+  assert.equal(f.dates, undefined);
+  const variant = (patch: any) => normalizeItem({ ...fixture("opavote_poll_voting.json"), ...patch });
+  assert.equal(variant({ status: "EDITING" }).state, "not_started");
+  assert.equal(variant({ status: "END" }).state, "concluded");
+  assert.equal(variant({ status: "END" }).terminal, true);
+  assert.equal(variant({ status: "WHATEVER" }).state, "unknown");
+  assert.equal(variant({ show_results: "no" }).extra?.results_url, undefined);
+
+  const { ctx, calls } = makeCtx({
+    "https://opavote.com/api/v1/items/5654402576678912": { body: fixture("opavote_poll_voting.json") },
+    "https://opavote.com/api/v1/items/1234567890": { body: { error: true, msg: "This item has been deleted and is no longer available." } },
+    "https://opavote.com/api/v1/items/1111111111": { body: { error: true, msg: "Must provide your secret key." } },
+  });
+  for (const u of ["https://opavote.com/vote/5654402576678912", "https://opavote.com/results/5654402576678912/1", "https://opavote.com/code/5654402576678912?kiosk=1"])
+    assert.equal(matchUrl(ctx, SEED_TOOLS, u)?.tool.id, "opavote", u);
+  assert.equal(opavote.parse("https://opavote.com/help/api", ctx), null);
+  const r = await opavote.fetch(opavote.parse("https://opavote.com/vote/5654402576678912", ctx)!, ctx);
+  assert.ok(!r.notModified && r.fetched.state === "open");
+  const gone = await opavote.fetch({ item_type: "vote", ids: { eid: "1234567890" } }, ctx);
+  assert.ok(!gone.notModified && gone.fetched.state === "withdrawn");
+  await assert.rejects(() => opavote.fetch({ item_type: "vote", ids: { eid: "1111111111" } }, ctx), (e: any) => e.manualFallback === true);
+  assert.ok(calls.every((u) => u.startsWith("https://opavote.com/api/v1/items/")));
 });

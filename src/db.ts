@@ -139,6 +139,8 @@ export const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   (db) => questionDates(db),
   // v8: every field is retrieved or typed (Question.typed); tools no longer have their own state words.
   (db) => typedFields(db),
+  // v9: the OpaVote tool joins every space's tool list.
+  (db) => addSeedTool(db, "opavote"),
 ];
 
 /**

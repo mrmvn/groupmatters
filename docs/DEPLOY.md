@@ -98,7 +98,7 @@ For a portable, human-readable copy, also keep the JSON export of each space.
 
 - Every response carries `Referrer-Policy: no-referrer` and a strict CSP. External links use `rel="noopener noreferrer"`.
 - Only tokens' SHA-256 hashes are stored. A lost link can't be recovered, only rotated.
-- Adapters call `api.github.com`, `gitlab.com`, hosts listed in `GITLAB_HOSTS`, `www.loomio.com`, `pol.is` and `www.metaculus.com`, plus **Decidim and Consul instances**: any host whose links match (Decidim) or that a space added (Consul), but only after checking that the host resolves to public addresses. The server needs working DNS for that (behind a proxy without local DNS, Decidim/Consul links and title pre-fill fail safely).
+- Adapters call `api.github.com`, `gitlab.com`, hosts listed in `GITLAB_HOSTS`, `www.loomio.com`, `pol.is`, `opavote.com` and `www.metaculus.com`, plus **Decidim and Consul instances**: any host whose links match (Decidim) or that a space added (Consul), but only after checking that the host resolves to public addresses. The server needs working DNS for that (behind a proxy without local DNS, Decidim/Consul links and title pre-fill fail safely).
 - **Title pre-fill** for manual tools fetches the linked page once when a link is pasted or attached: https only, port 443, public addresses only (DNS checked at every redirect hop), 512 KB, 8 s timeout. Only links matching a tool's patterns are fetched.
 - Behind an outgoing HTTP proxy, start Node with `NODE_USE_ENV_PROXY=1` so `fetch` uses `HTTPS_PROXY`.
 - **Upgrades**: before a schema migration, the server writes a snapshot next to the database (`register.sqlite.before-vN.bak`).

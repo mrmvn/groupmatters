@@ -72,6 +72,19 @@ export const SEED_TOOLS: Tool[] = [
     ],
   },
   {
+    id: "opavote",
+    name: "OpaVote",
+    description: "Formal votes and elections with a secret ballot: ranked-choice, approval or plurality, among named voters or open to anyone.",
+    fetch_mode: "auto",
+    adapter: "opavote",
+    enabled: true,
+    url_patterns: [
+      { pattern: "https://opavote.com/vote/:eid(\\d+){/*}?", item_type: "vote" },
+      { pattern: "https://opavote.com/results/:eid(\\d+){/*}?", item_type: "vote" },
+      { pattern: "https://opavote.com/code/:eid(\\d+){/*}?", item_type: "vote" },
+    ],
+  },
+  {
     // Any Decidim instance: its URLs are distinctive, and fetches only go to public addresses.
     id: "decidim",
     name: "Decidim",

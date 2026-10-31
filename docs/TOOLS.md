@@ -27,7 +27,7 @@ A typed status uses the space's status labels (each belongs to one category; edi
 
 ## Per platform
 
-Verified against the live APIs in October 2026, except Metaculus (needs an account token; written from its published OpenAPI spec).
+Verified against the live APIs in October 2026 (OpaVote: on its public demo poll only), except Metaculus (needs an account token; written from its published OpenAPI spec).
 
 | Platform | Item | Auth | Title | Platform state → category | Last activity | Other details |
 |---|---|---|---|---|---|---|
@@ -39,6 +39,7 @@ Verified against the live APIs in October 2026, except Metaculus (needs an accou
 | | thread | | ✔ | open → In progress · closed (locked) → Concluded · deleted → Withdrawn | ✔ `last_activity_at` | replies, active polls |
 | **Polis** (pol.is) | conversation (or its report link) | none, public conversations | ✔ `topic` | active → In progress · closed → Concluded | ✔ last vote (`modified`) | participants; report link kept as "results" |
 | **Metaculus** | question | **API token required** (`METACULUS_TOKEN`) | ✔ (with token) | upcoming → Not started · open → In progress · closed (awaiting resolution) → In progress · resolved Yes → Accepted · resolved No → Rejected · annulled/ambiguous → Withdrawn · other resolutions (number, date…) → Concluded · not published → Withdrawn | ✕ (no such field; `edited_at` is editorial) | forecasters, forecasts, comments |
+| **OpaVote** (opavote.com) | poll / election (`/vote/…`, `/results/…`, `/code/…` links) | none (the link's id is the key; no API key used) | ✔ | being prepared (EDITING) → Not started · voting → In progress · ended → Concluded (OpaVote has no pass/fail; type it if the group reads one) · deleted → Withdrawn | ✕ | number of contests and their counting methods; results link when the results are shown (`show_results`) |
 | **Decidim** (any instance, no setup) | proposal | none, public items | ✔ (best of en/es/fr/ca/de… translations) | not answered → In progress · evaluating → In progress · accepted → Accepted · rejected → Rejected · withdrawn → Withdrawn · custom states (Decidim ≥ 0.28, e.g. "Main repo (merged)"): Concluded once answered, In progress before | ✔ `updatedAt` | supports, comments, the official answer |
 | | meeting | | ✔ | before start → Not started · during → In progress · after → Concluded ("Held") · closed → Concluded (closing report as summary) · withdrawn → Withdrawn | ✔ `updatedAt` | attendees, start/end |
 | | debate | | ✔ | by start/end dates when set, else In progress · closed → Concluded (conclusions as summary) | ✔ `updatedAt` | comments |
@@ -61,6 +62,8 @@ Verified against the live APIs in October 2026, except Metaculus (needs an accou
 - **Title pre-fill for other tools** reads the page's `og:title`, `twitter:title` or `<title>`. It only fetches https pages on public addresses (checked at every redirect, port 443, 512 KB max, 8 s timeout), and ignores generic titles (the site's name, login walls, bot challenges).
 - **Dates.** Retrieved start = when the item opened (or is scheduled); retrieved end = when it ended, else its closing date (a planned end). Each can be typed instead (a day, time optional), or typed as "no date". Without a start date, a question isn't on the timeline.
 - **Refresh rhythm**: in-progress items every 15 minutes, ended items daily, with back-off on errors.
+
+- **OpaVote**: the item endpoint (`/api/v1/items/<id>`) answers without an API key, so only the public id in the link is needed. The public answer has no dates and no vote counts (those need the owner's key), so type start/end. Items that can't be read without the key fall back to hand updates. Only the public demo poll was checked live; an election with registered voters may behave differently.
 
 ### Possible next adapters
 

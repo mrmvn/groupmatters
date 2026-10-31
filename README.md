@@ -20,7 +20,7 @@ Create a real space with `node src/cli.ts create-space "Our group"`. It prints a
 ## What's in it
 
 - Questions with a **status category** (not started, in progress, accepted, rejected, concluded, withdrawn). A question follows its process, or its status is set by hand from the space's editable status labels. Relations between questions (parent/child, related, duplicate), shown on both sides; children are listed under their parents, and duplicates suggest being withdrawn.
-- One process per question: a link from the space's **tool list**, or a **custom** process (a meeting, an unconference…) with or without a link. GitHub, GitLab, public Loomio polls/threads, Polis, Decidim (any instance) and Consul Democracy (per instance) are fetched automatically (state, results, last activity); Metaculus too with an API token. Other tools are updated by hand, with the page title used to prefill questions. See `docs/TOOLS.md`.
+- One process per question: a link from the space's **tool list**, or a **custom** process (a meeting, an unconference…) with or without a link. GitHub, GitLab, public Loomio polls/threads, Polis, OpaVote, Decidim (any instance) and Consul Democracy (per instance) are fetched automatically (state, results, last activity); Metaculus too with an API token. Other tools are updated by hand, with the page title used to prefill questions. See `docs/TOOLS.md`.
 - A **dashboard** (in the top-right menu): prototype widgets of fixed sizes for tools, statuses, momentum, attention, personal impact and milestones, each hideable.
 - A **Tools** page (tool list, status labels, editable by anyone with edit access), **How this works** (the charter), the activity log and export, from the top-right menu.
 - An append-only **activity log** (enforced by database triggers), "changed since your last visit", an Atom feed and a full JSON export.
@@ -36,7 +36,7 @@ src/            server (TypeScript, run directly by Node)
   questions.ts  questions: create, edit, status, relations
   processes.ts  attach / refresh / hand-set states; questions follow their process
   tools.ts      tool registry + URL matching
-  adapters/     GitHub, GitLab, Loomio, Polis, Metaculus, Decidim, Consul
+  adapters/     GitHub, GitLab, Loomio, Polis, OpaVote, Metaculus, Decidim, Consul
   pagetitle.ts  title pre-fill for other tools (with SSRF guard)
   rules.ts      tool list and status labels
   http/         router + JSON API

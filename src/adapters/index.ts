@@ -7,11 +7,12 @@ import { decidim } from "./decidim.ts";
 import { consul } from "./consul.ts";
 import { metaculus } from "./metaculus.ts";
 import { polis } from "./polis.ts";
+import { opavote } from "./opavote.ts";
 
 export type { Adapter, Parsed, FetchResult } from "./common.ts";
 export { AdapterError } from "./common.ts";
 
-const ADAPTERS: Record<string, Adapter> = { github, gitlab, loomio, polis, metaculus, decidim, consul };
+const ADAPTERS: Record<string, Adapter> = { github, gitlab, loomio, polis, metaculus, decidim, consul, opavote };
 
 export const getAdapter = (id: string): Adapter | undefined => ADAPTERS[id];
 export const adapterIds = () => Object.keys(ADAPTERS);
