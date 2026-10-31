@@ -108,6 +108,19 @@ legend { font-weight: 600; font-size: .9rem; padding: 0 4px; }
 /* toolbar, filters */
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 8px; }
 .search { display: flex; gap: 6px; flex: 1 1 260px; }
+.search-btn { padding: 8px 12px; }
+@media (max-width: 560px) {
+  .toolbar { gap: 8px; }
+  .search { flex: 0 0 auto; max-width: 100%; }
+  .search:focus-within { flex: 1 1 100%; order: -2; }
+  /* one row: lanes on the left, then the search icon and the view toggle */
+  .toolbar .sublanes { order: -1; flex: 1 1 0; flex-basis: 0; min-width: 0; gap: 4px; }
+  .toolbar .sublane { padding: 4px 9px; font-size: .85rem; }
+  .search-btn { padding: 8px 10px; }
+  .search input { width: 100%; min-width: 0; }
+  /* collapsed: only the magnifier, until tapped or while a query is typed */
+  .search:not(:focus-within) input:placeholder-shown { width: 0; padding: 0; border: 0; margin: 0 -6px 0 0; opacity: 0; }
+}
 .presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip-btn { border-radius: 999px; padding: 4px 12px; min-height: 34px; font-size: .88rem; }
 .chip-btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
@@ -286,7 +299,7 @@ body.dropping::after {
 .create-fields input[type=text], .create-fields select { width: 100%; max-width: 32rem; }
 
 /* Lanes under the List / Timeline tabs */
-.sublanes { display: flex; flex-wrap: wrap; gap: 6px; }
+.sublanes { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
 .filters > .presets { margin: 4px 0 10px; }
 .sublane { padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; text-decoration: none; color: var(--muted); font-size: .9rem; white-space: nowrap; }
 .sublane:hover { border-color: var(--muted); }

@@ -25,7 +25,7 @@ The lanes, to the right of the search: **Current** (not started and in progress)
 
 ## Adding an item
 
-Type in the box at the top: **"Name a process or paste its link."** You can also **drag a link** from another tab anywhere onto the page; on a question without a process, a dropped link becomes its process.
+Type in the box at the top: **"Name or link your process"** You can also **drag a link** from another tab anywhere onto the page; on a question without a process, a dropped link becomes its process.
 
 - **Typing a question**: similar existing questions appear below. Check them first, then press *Add question*.
 - **Pasting a link** (a GitHub pull request, a Loomio poll, a Polis conversation…): the register recognises the tool and fills in the retrieved title. Keep it to follow the item's title, or rewrite it in your own words (it's then typed).

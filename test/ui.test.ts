@@ -110,7 +110,7 @@ test("header: no tabs; the space name opens the items; the menu has Dashboard, T
   btn.click();
   assert.ok(list.hasAttribute("hidden"));
   // The page opens on the bar to add an item.
-  assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name a process or paste its link.");
+  assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or link your process");
   assert.match((await go("#/how")).textContent!, /How this register works/);
   assert.match((await go("#/rules")).textContent!, /Tool list/);
   assert.ok(document.querySelector('main a[href="#/list"]'), "a way back to the items");

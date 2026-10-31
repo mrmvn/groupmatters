@@ -219,7 +219,7 @@ function header(section) {
         "div",
         { class: "who" },
         S.role === "view" ? h("span", { class: "badge" }, "View only") : null,
-        canEdit() ? h("button", { class: "link", onclick: () => askName(), title: "Change your display name" }, "You: ", h("strong", null, getName() || "?"), " ✎") : null,
+        canEdit() ? h("button", { class: "link", onclick: () => askName(), title: "Change your display name" }, h("span", { "aria-hidden": "true" }, "✎ "), h("strong", null, getName() || "?")) : null,
         h("div", { class: "menu" }, button, list),
       ),
     ),
@@ -327,7 +327,7 @@ function listControls(params, view) {
   };
 
   const searchInput = h("input", { type: "search", placeholder: "Search questions…", value: params.get("q") ?? "", "aria-label": "Search questions" });
-  const searchForm = h("form", { class: "search", role: "search", onsubmit: (e) => (e.preventDefault(), setParam("q", searchInput.value.trim())) }, searchInput, h("button", { type: "submit" }, "Search"));
+  const searchForm = h("form", { class: "search", role: "search", onsubmit: (e) => (e.preventDefault(), setParam("q", searchInput.value.trim())) }, searchInput, h("button", { type: "submit", class: "search-btn", "aria-label": "Search", title: "Search", onclick: (e) => { if (!searchInput.value.trim() && params.get("q") == null) (e.preventDefault(), searchInput.focus()); } }, "🔍"));
 
   const sel = (key, label, options, anyLabel = "Any", value = params.get(key) ?? "") =>
     field(
@@ -390,7 +390,7 @@ function listControls(params, view) {
     return h("a", { href: `#/list?${p}`, class: `view-btn${view === v ? " current" : ""}`, title: label, "aria-label": label, "aria-current": view === v ? "true" : null }, h("span", { class: `ico ico-${v}`, "aria-hidden": "true" }, h("i"), h("i"), h("i")));
   };
   const viewToggle = h("div", { class: "view-toggle", role: "group", "aria-label": "View" }, viewBtn("list", "Show as a list"), viewBtn("timeline", "Show on a timeline"));
-  return { searching, lane, query, hierarchy, controls: [h("div", { class: "toolbar" }, searchForm, laneNav, viewToggle), filters, relatedChip] };
+  return { searching, lane, query, hierarchy, controls: [h("div", { class: "toolbar" }, searchForm, viewToggle, laneNav), filters, relatedChip] };
 }
 
 async function pageHome(params) {
@@ -435,7 +435,7 @@ function composer(opts = {}) {
       h("a", { href: `#/q/${x.id}` }, x.title),
       opts.relateTo && x.id !== opts.relateTo && !opts.exclude?.has(x.id) ? [" · ", h("button", { type: "button", class: "link", onclick: () => opts.onRelate(x) }, "Relate it instead")] : null,
     );
-  const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Name a process or paste its link.", autocomplete: "off", "aria-label": "Name a process or paste its link" });
+  const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Name or link your process", autocomplete: "off", "aria-label": "Name or link your process" });
   const panel = h("div", { class: "composer-panel" });
   let mode = "idle"; // idle | text | link
   let preview = null;
