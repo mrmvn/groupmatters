@@ -13,7 +13,7 @@ import { arrange, roleOf, ROLES } from "../relations.ts";
 import { dashboard } from "../dashboard.ts";
 import { withFields } from "../fields.ts";
 import { adapterIds, getAdapter } from "../adapters/index.ts";
-import { rotateLink } from "../spaces.ts";
+import { rotateLink, setCharter } from "../spaces.ts";
 import { forbidden, HttpError, notFound, bad } from "../util.ts";
 
 export type ApiReq = {
@@ -159,6 +159,9 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
   if (method === "POST" && a === "resolve-url" && !id) {
     if (typeof r.body?.url !== "string") throw bad("url is required");
     return P.previewUrl(ctx, space, r.body.url);
+  }
+  if (method === "PUT" && a === "settings" && id === "about" && !b) {
+    return { space: setCharter(ctx, space.id, r.body?.markdown, actor) };
   }
   if (method === "PUT" && a === "settings" && id === "status-labels" && !b) {
     return { space: setStatusLabels(ctx, space, actor, r.body?.status_labels) };

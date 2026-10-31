@@ -65,6 +65,20 @@ test("short tokens; the edit link (only) shows the view link and can replace it"
   assert.equal((await api(editToken, "GET", "space")).json.view_token, null);
 });
 
+test("the About text: editors set it, viewers read it but can't change it; names are required", async () => {
+  const own = makeSpace(t.ctx);
+  assert.equal((await api(own.editToken, "GET", "space")).json.space.charter_markdown, "");
+  const r = await api(own.editToken, "PUT", "settings/about", { markdown: "We are **a co-op**." }, "Ana");
+  assert.equal(r.status, 200);
+  assert.equal(r.json.space.charter_markdown, "We are **a co-op**.\n");
+  assert.equal((await api(own.viewToken, "GET", "space")).json.space.charter_markdown, "We are **a co-op**.\n");
+  assert.equal((await api(own.viewToken, "PUT", "settings/about", { markdown: "x" }, "Ana")).status, 403);
+  assert.equal((await api(own.editToken, "PUT", "settings/about", { markdown: "x" }, null)).json.error.code, "name_required");
+  assert.equal((await api(own.editToken, "PUT", "settings/about", { markdown: 5 }, "Ana")).status, 400);
+  const log = await api(own.editToken, "GET", "activity");
+  assert.ok(log.json.activity.some((e: any) => e.action === "charter.changed" && e.actor === "Ana"));
+});
+
 test("writes need a display name; non-ASCII names work", async () => {
   const r = await api(editToken, "POST", "questions", { title: "x" }, null);
   assert.equal(r.status, 400);
@@ -391,7 +405,7 @@ test("footer: Source and Privacy everywhere; Contact only when configured, escap
     const r = await fetchLocal(p);
     assert.equal(r.status, 200, p);
     const html = await r.text();
-    assert.match(html, /<footer class="site-footer">Group Matters · <a href="https:\/\/github\.com\/mrmvn\/groupmatters"[^>]*>Source<\/a> · <a href="\/privacy">Privacy<\/a><\/footer>/, p);
+    assert.match(html, /<footer class="site-footer"><a href="\/">Group Matters<\/a> · <a href="https:\/\/github\.com\/mrmvn\/groupmatters"[^>]*>Source<\/a> · <a href="\/privacy">Privacy<\/a><\/footer>/, p);
     assert.doesNotMatch(html, /mailto:|FOOTER/, p);
   }
   assert.doesNotMatch(await (await fetchLocal("/privacy")).text(), /Hosting|HOSTING/);

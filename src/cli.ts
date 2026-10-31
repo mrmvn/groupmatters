@@ -14,7 +14,7 @@ const USAGE = `Group Matters — operator commands
   list-spaces                      List spaces (ids and names; never links)
   rotate-link <space-id> edit|view Invalidate a link and print its replacement
   export <space-id>                Print the space's JSON export
-  set-charter <space-id> [file]    Replace the space's charter with markdown from a file (or stdin); logged
+  set-charter <space-id> [file]    Replace the space's "About this group" text with markdown from a file (or stdin); logged
 
 Environment: DB_PATH (default data/register.sqlite), PUBLIC_URL (used to print links).`;
 
@@ -83,7 +83,7 @@ switch (cmd) {
       console.error((e as Error).message);
       process.exit(1);
     }
-    console.log("Charter updated.");
+    console.log("About text updated.");
     break;
   }
   default:

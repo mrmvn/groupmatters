@@ -143,6 +143,9 @@ export const MIGRATIONS: (string | ((db: DatabaseSync) => void))[] = [
   (db) => addSeedTool(db, "opavote"),
   // v10: the view token is also kept readable, so the edit link can show and offer the view link (null for older spaces until it is rotated).
   `ALTER TABLE spaces ADD COLUMN view_token TEXT;`,
+  // v11: the charter column now holds only the group's own "About this group" text; the app's help moved into the UI.
+  // Spaces whose charter was never changed still hold the old default text, so it is cleared.
+  `UPDATE spaces SET charter_markdown = '' WHERE NOT EXISTS (SELECT 1 FROM activity a WHERE a.space_id = spaces.id AND a.action = 'charter.changed');`,
 ];
 
 /**

@@ -123,7 +123,7 @@ Restart=on-failure
 ```sh
 node src/cli.ts create-space "<name>"          # prints edit + view links once
 node src/cli.ts list-spaces
-node src/cli.ts set-charter <space-id> charter.md   # replace a space's charter (markdown; logged)
+node src/cli.ts set-charter <space-id> charter.md   # set a space's "About this group" text (markdown; logged). Members can also edit it in the app
 node src/cli.ts rotate-link <space-id> edit    # or view; old link stops working
 node src/cli.ts export <space-id> > export.json
 ```

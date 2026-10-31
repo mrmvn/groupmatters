@@ -102,7 +102,7 @@ export function questionCard(q, ctx, children = [], kidIds = []) {
       h(
         "div",
         { class: "card-criteria" },
-        q.process ? (q.fields?.status?.source === "retrieved" ? "Status retrieved" : "Status typed") : "No process",
+        q.process ? (q.fields?.status?.source === "retrieved" ? "Status retrieved" : "Status typed") : "No tool attached",
         " · ",
         platformAt ? ["last activity on the platform ", time(platformAt, timeAgo(platformAt))] : ["last change ", time(q.last_activity_at, timeAgo(q.last_activity_at))],
       ),

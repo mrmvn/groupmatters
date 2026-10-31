@@ -75,7 +75,7 @@ const escHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<"
 export function footerHtml(ctx: Ctx): string {
   const { sourceUrl, contactEmail } = ctx.config;
   const parts = [
-    "Group Matters",
+    `<a href="/">Group Matters</a>`,
     `<a href="${escHtml(sourceUrl)}" target="_blank" rel="noopener">Source</a>`,
     `<a href="/privacy">Privacy</a>`,
     contactEmail ? `<a href="mailto:${escHtml(contactEmail)}">Contact</a>` : "",

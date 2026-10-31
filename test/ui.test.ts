@@ -94,12 +94,12 @@ test("every lane renders", async () => {
   assert.ok(document.querySelector('main .sublane.current[href*="lane=all"]'), "the chosen lane is marked");
 });
 
-test("header: no tabs; the space name opens the items; the menu has Dashboard, Tools, Activity, How this works, Export, Share (edit link)", async () => {
+test("header: no tabs; the space name opens the items; the menu has Dashboard, Tools, Activity, About, Export, Share (edit link)", async () => {
   await go("#/list?lane=ended");
   assert.equal(document.querySelectorAll("header .tab, header nav").length, 0, "no tabs");
   assert.equal(document.querySelector("header a.space-name")!.getAttribute("href"), "#/list");
   const items = [...document.querySelectorAll("header .menu .menu-list > *")] as any[];
-  assert.deepEqual(items.map((a) => a.textContent), ["Dashboard", "Tools", "Activity", "How this works", "Export", "Share…"]);
+  assert.deepEqual(items.map((a) => a.textContent), ["Dashboard", "Tools", "Activity", "About", "Export", "Share…"]);
   assert.deepEqual(items.slice(0, 4).map((a) => a.getAttribute("href")), ["#/dashboard", "#/rules", "#/activity", "#/how"]);
   // The menu opens on its button and closes again.
   const list = document.querySelector(".menu-list") as any;
@@ -111,8 +111,12 @@ test("header: no tabs; the space name opens the items; the menu has Dashboard, T
   btn.click();
   assert.ok(list.hasAttribute("hidden"));
   // The page opens on the bar to add an item.
-  assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or link your process");
-  assert.match((await go("#/how")).textContent!, /How this space works/);
+  assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or link a matter: a question, a proposal, a poll, a meeting…");
+  assert.ok(!document.querySelector(".composer-prompt"), "no witty line above the bar");
+  const how = await go("#/how");
+  assert.match(how.textContent!, /About this group/);
+  assert.match(how.textContent!, /Attached link/);
+  assert.match(how.textContent!, /Add a description/, "an editor can write the group's own text");
   assert.match((await go("#/rules")).textContent!, /Tool list/);
   assert.ok(document.querySelector('main a[href="#/list"]'), "a way back to the items");
 });
@@ -142,7 +146,7 @@ test("items page: All shows its count; filters take several values; view symbols
   assert.deepEqual([...toolbar.children].map((c: any) => c.className.split(" ")[0]), ["view-toggle", "search", "sublanes"], "toggle, then search, then lanes");
   // Status, tool, item type and process state are dropdowns of boxes that can be ticked together.
   const btnText = (m: any) => [...m.querySelectorAll(".dd-btn")].map((b: any) => b.textContent.replace("▾", ""));
-  assert.deepEqual(btnText(main), ["Status", "Tool", "Item type", "Process state"]);
+  assert.deepEqual(btnText(main), ["Status", "Tool", "Item type"]);
   assert.equal(main.querySelectorAll("select").length, 2, "only Order and Children are single selects now");
   assert.ok(![...main.querySelectorAll(".field .label")].some((l: any) => /Status is|Has a process/.test(l.textContent)), "no 'Status is' or 'Has a process' filter");
   const toolBox = main.querySelector("#dd-tool") as any;
@@ -215,19 +219,10 @@ test("rules pages and activity render", async () => {
   assert.match((await go("#/activity")).textContent!, /added the matter/);
 });
 
-test("composer: a prompt line shows while the bar is idle and hides once you type", async () => {
+test("composer: the witty prompt line is switched off (see prompts.js); the bar's placeholder explains matters", async () => {
   const main = await go("#/list?lane=current");
-  const prompt = main.querySelector(".composer-prompt") as any;
-  assert.ok(prompt, "a line above the add bar");
-  assert.ok(prompt.textContent!.trim().length > 0);
-  assert.ok(!prompt.hidden, "shown while idle");
-  const input = document.getElementById("composer-input") as any;
-  input.value = "Something on our minds";
-  input.dispatchEvent(new window.Event("input"));
-  assert.ok(prompt.hidden, "hidden once there's text");
-  input.value = "";
-  input.dispatchEvent(new window.Event("input"));
-  assert.ok(!prompt.hidden, "back when idle again");
+  assert.ok(!main.querySelector(".composer-prompt"), "no line above the add bar");
+  assert.match((document.getElementById("composer-input") as any).getAttribute("placeholder"), /^Name or link a matter/);
 });
 
 test("flow: type a question in the composer and add it", async () => {

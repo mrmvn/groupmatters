@@ -76,7 +76,7 @@ export const ACTION = {
   "tool.edited": "edited a tool",
   "tool.enabled": "enabled a tool",
   "tool.disabled": "disabled a tool",
-  "charter.changed": "changed the charter",
+  "charter.changed": "edited “About this group”",
   "settings.changed": "changed the settings",
   "link.rotated": "rotated a link",
   "space.created": "created the space",

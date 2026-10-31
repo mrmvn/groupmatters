@@ -118,7 +118,7 @@ const WIDGETS = [
     build: (d) => {
       const top = d.tools.slice(0, 5);
       const rows = top.map((t) => ({ label: t.name, n: t.questions, href: `#/list?lane=all&tool=${t.custom ? "custom" : t.id}`, note: t.custom ? "(custom)" : t.in_progress ? `· ${t.in_progress} in progress` : "" }));
-      if (d.totals.without_process) rows.push({ label: "No process", n: d.totals.without_process, href: "#/list?lane=all&tool=none", cls: "muted-fill" });
+      if (d.totals.without_process) rows.push({ label: "No tool attached", n: d.totals.without_process, href: "#/list?lane=all&tool=none", cls: "muted-fill" });
       const pct = d.totals.questions ? Math.round((d.totals.with_process / d.totals.questions) * 100) : 0;
       return h(
         "div",
@@ -155,7 +155,7 @@ const WIDGETS = [
           "ul",
           { class: "checks" },
           item(a.quiet, "in progress but quiet for 30+ days", "#/list?preset=quiet"),
-          item(a.no_process, "current without a process yet", "#/list?preset=no_process"),
+          item(a.no_process, "current with no tool attached", "#/list?preset=no_process"),
           item(a.fetch_problems, "with a problem retrieving from their link", "#/list?preset=fetch_problems"),
         ),
         a.oldest_open ? h("p", { class: "muted small" }, "Longest-waiting: ", h("a", { href: `#/q/${a.oldest_open.id}` }, a.oldest_open.title), ` (${plural(a.oldest_open.days, "day")})`) : null,

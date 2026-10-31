@@ -3,10 +3,10 @@
 //   #/list?lane=current&q=…  the items, as a list or (view=timeline) as bars over time; lanes, search, filters
 //   #/q/<id>                 question page
 //   #/rules                  tools (tool list, status labels); #/rules/add-tool?url=…; #/rules/tool?id=… (edit)
-//   #/how                    how this works (the charter)
+//   #/how                    how this works (the group's own text + the app's help)
 //   #/timeline?…             old link: the items' timeline view
 //   #/activity               activity feed
-// No tabs: the space name opens the items, the menu (top right) has Dashboard, Tools, Activity, How this works, Export.
+// No tabs: the space name opens the items, the menu (top right) has Dashboard, Tools, Activity, About, Export.
 import { api, qs, getName, setName, TOKEN, ApiError } from "./api.js";
 import { h, extLink, fmtDate, time, timeAgo, toast, debounce } from "./dom.js";
 import { STATE, STATE_HINT, QUESTION_STATES, ENDED, CUSTOM_TOOL_ID, ROLE, RELATE_AS, itemLabel } from "./labels.js";
@@ -15,7 +15,8 @@ import { renderMarkdown } from "./md.js";
 import { fieldCell, createFields, retrievedFromPreview, FIELD_LABEL } from "./fields.js";
 import { timelineChart } from "./timeline.js";
 import { dashboardPage } from "./dashboard.js";
-import { promptOfSession } from "./prompts.js";
+import { PROMPTS_ENABLED, promptOfSession } from "./prompts.js";
+import { helpSections } from "./help.js";
 
 const app = document.getElementById("app");
 const S = { space: null, role: "view", tools: [], counts: {}, since: null };
@@ -249,7 +250,7 @@ function parseHash() {
 let renderSeq = 0;
 let lastPageKey = null;
 
-const PAGE_TITLES = { list: "Matters", dashboard: "Dashboard", rules: "Tools", activity: "Activity", how: "How this works" };
+const PAGE_TITLES = { list: "Matters", dashboard: "Dashboard", rules: "Tools", activity: "Activity", how: "About" };
 
 /** The page's <h1> (a visually hidden one when the page has none) and its text. */
 function pageHeading(parts, view) {
@@ -332,7 +333,7 @@ function header(section) {
     item("dashboard", "Dashboard"),
     item("rules", "Tools"),
     item("activity", "Activity"),
-    item("how", "How this works"),
+    item("how", "About"),
     h("button", { type: "button", onclick: () => (closeMenus(), downloadExport()) }, "Export"),
     canEdit() ? h("button", { type: "button", onclick: () => (closeMenus(), shareDialog()) }, "Share…") : null,
   );
@@ -450,12 +451,12 @@ const LANES = {
 };
 // Shortcuts: no controls of their own, only the dashboard's "Needs attention" links (`preset=`), shown as a notice with a way out.
 const PRESETS = {
-  no_process: "current matters with no process yet",
+  no_process: "current matters with no tool attached",
   quiet: "matters in progress but quiet for 30+ days",
   fetch_problems: "matters whose link couldn't be read",
 };
-const FILTER_KEYS = ["q", "preset", "status", "tool", "item_type", "state", "related"];
-/** Tool filter value for matters with no process (and so no tool). */
+const FILTER_KEYS = ["q", "preset", "status", "tool", "item_type", "related"];
+/** Tool filter value for matters with no tool attached. */
 const NO_TOOL = "none";
 /** The filter dropdown that is open (it stays open while its boxes are ticked, across the re-render each tick causes). */
 let openFilter = null;
@@ -531,15 +532,14 @@ function listControls(params, view) {
   const itemTypes = [...new Set([...S.tools.flatMap((t) => t.url_patterns.map((p) => p.item_type)), ...(S.custom_kinds ?? []).map((k) => k.kind)])];
   const filters = h(
     "details",
-    { class: "filters", open: ["status", "tool", "state", "item_type", "sort", "flat"].some((k) => params.get(k)) },
+    { class: "filters", open: ["status", "tool", "item_type", "sort", "flat"].some((k) => params.get(k)) },
     h("summary", null, "Filters"),
     h(
       "div",
       { class: "dd-row", role: "group", "aria-label": "Filters" },
       multi("status", "Status", QUESTION_STATES.map((s) => [s, STATE[s]])),
-      multi("tool", "Tool", [[NO_TOOL, "No tool"], [CUSTOM_TOOL_ID, "Custom process"], ...S.tools.map((t) => [t.id, t.name])]),
+      multi("tool", "Tool", [[NO_TOOL, "No tool"], [CUSTOM_TOOL_ID, "Custom tool"], ...S.tools.map((t) => [t.id, t.name])]),
       itemTypes.length ? multi("item_type", "Item type", itemTypes.map((t) => [t, itemLabel(t)])) : null,
-      multi("state", "Process state", Object.entries(STATE)),
       sort ? sel("sort", "Order", [["", "Latest activity first"], ["created", "Newest first"]], null) : null,
       sel("flat", "Children", [["", "Under their parent"], ["1", "Listed apart (flat)"]], null),
     ),
@@ -612,7 +612,11 @@ async function pageDashboard() {
   return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name, back: backToItems() });
 }
 
-/** "Name a process or paste its link." */
+/** The add bar: "Name or link a matter", with a few examples of what a matter can be when there's room. */
+const COMPOSER_HELP = "Name or link a matter";
+const COMPOSER_EXAMPLES = "Name or link a matter: a question, a proposal, a poll, a meeting…";
+const roomForExamples = () => typeof matchMedia !== "function" || matchMedia("(min-width: 561px)").matches;
+
 function composer(opts = {}) {
   // An existing question with the same title or link: open it, or (on a question page) relate it.
   const existingNotice = (x, text) =>
@@ -624,9 +628,9 @@ function composer(opts = {}) {
       h("a", { href: `#/q/${x.id}` }, x.title),
       opts.relateTo && x.id !== opts.relateTo && !opts.exclude?.has(x.id) ? [" · ", h("button", { type: "button", class: "link", onclick: () => opts.onRelate(x) }, "Relate it instead")] : null,
     );
-  const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? "Name or link your process", autocomplete: "off", "aria-label": "Name or link your process" });
-  // A line above the bar, only while it's idle (hidden as soon as there's text). On the main bar only.
-  const prompt = opts.relateTo ? null : h("p", { class: "composer-prompt muted small" }, promptOfSession());
+  const input = h("input", { id: opts.relateTo ? null : "composer-input", type: "text", maxlength: 2000, placeholder: opts.placeholder ?? (roomForExamples() ? COMPOSER_EXAMPLES : COMPOSER_HELP), autocomplete: "off", "aria-label": opts.relateTo ? "Find or add a matter" : COMPOSER_HELP });
+  // A line above the bar, only while it's idle (hidden as soon as there's text). On the main bar only, and off for now (see prompts.js).
+  const prompt = opts.relateTo || !PROMPTS_ENABLED ? null : h("p", { class: "composer-prompt muted small" }, promptOfSession());
   const panel = h("div", { class: "composer-panel" });
   let mode = "idle"; // idle | text | link
   let preview = null;
@@ -1112,7 +1116,7 @@ async function pageRules(sub, params) {
       "section",
       { class: "panel" },
       h("h2", null, "Tool list"),
-      h("p", { class: "muted" }, "Links from these tools can be attached as processes. Anything else can be linked as a custom process. Anyone with edit access can add a tool; no vote needed."),
+      h("p", { class: "muted" }, "Links from these tools can be attached to a matter, and their fields retrieved. Any other link, or none, makes it a custom tool, described by hand. Anyone with edit access can add a tool; no vote needed."),
       canEdit() ? h("p", null, h("a", { class: "button", href: "#/rules/add-tool" }, "Add a tool")) : null,
       h(
         "div",
@@ -1152,8 +1156,8 @@ async function pageRules(sub, params) {
       ? h(
           "section",
           { class: "panel" },
-          h("h2", null, "Custom processes in use"),
-          h("p", { class: "muted" }, "Processes described by hand (meetings, assemblies…), by kind. Offered as suggestions when linking a custom process."),
+          h("h2", null, "Custom tools in use"),
+          h("p", { class: "muted" }, "Tools described by hand (meetings, assemblies…), by kind. Offered as suggestions when attaching a custom tool."),
           h("ul", { class: "rel-list" }, customKinds.map((k) => h("li", null, h("strong", null, k.kind), " · ", used(k, `#/list${qs({ lane: "all", tool: CUSTOM_TOOL_ID, item_type: k.kind })}`)))),
         )
       : null,
@@ -1161,9 +1165,54 @@ async function pageRules(sub, params) {
   );
 }
 
-/** The charter. */
+/** "About": the group's own "About this group" text, then the app's help (the same for every space). */
 function pageHow() {
-  return h("div", null, backToItems(), h("section", { class: "panel charter" }, renderMarkdown(S.space.charter_markdown)));
+  return h(
+    "div",
+    null,
+    backToItems(),
+    h("h1", null, "About"),
+    aboutPanel(),
+    h("section", { class: "panel help" }, helpSections(S.space.settings.status_labels)),
+  );
+}
+
+/** The group's own text: what it is and how it uses this space. Hidden when empty, unless you can write it. */
+function aboutPanel() {
+  const text = (S.space.charter_markdown ?? "").trim();
+  if (!text && !canEdit()) return null;
+  const panel = h("section", { class: "panel about" });
+  const show = () =>
+    panel.replaceChildren(
+      h("h2", null, "About this group"),
+      text ? renderMarkdown(text) : h("p", { class: "muted" }, "Nothing here yet. Say what this group is, and how it uses this space: who takes part, which tools you use, how decisions get made."),
+      canEdit() ? h("div", { class: "row" }, h("button", { onclick: edit }, text ? "Edit" : "Add a description")) : null,
+    );
+  const edit = () => {
+    const area = h("textarea", { rows: 8, maxlength: 5000, value: text, "aria-label": "About this group", placeholder: "e.g. We're the tenants' association of Rue X. Proposals for the monthly general assembly go here first; polls run in Loomio." });
+    const save = h("button", { type: "submit", class: "primary" }, "Save");
+    panel.replaceChildren(
+      h("h2", null, "About this group"),
+      h(
+        "form",
+        {
+          onsubmit: async (e) => {
+            e.preventDefault();
+            save.disabled = true;
+            const r = await act(() => api("PUT", "settings/about", { markdown: area.value }), "Saved");
+            save.disabled = false;
+            if (r) await refresh();
+          },
+        },
+        h("p", { class: "muted small" }, "What this group is, and how it uses this space. Anyone with the edit link can change it, and changes are recorded in Activity. Basic Markdown works (headings, lists, **bold**, links)."),
+        area,
+        h("div", { class: "row" }, save, h("button", { type: "button", onclick: show }, "Cancel")),
+      ),
+    );
+    area.focus();
+  };
+  show();
+  return panel;
 }
 
 function statusLabelsPanel() {
@@ -1195,7 +1244,7 @@ function statusLabelsPanel() {
           if (r) await refresh();
         },
       },
-      h("p", { class: "muted small" }, "The words your group uses for a status, and the category each one counts as. Offered when setting a status by hand, and for custom processes. Keep at least one “Not started” label: new matters get the first one. Renaming a label doesn't change matters that already use it."),
+      h("p", { class: "muted small" }, "The words your group uses for a status, and the category each one counts as. Offered when setting a status by hand, and for custom tools. Keep at least one “Not started” label: new matters get the first one. Renaming a label doesn't change matters that already use it."),
       ed.el,
       h("div", { class: "row" }, btn, h("button", { type: "button", onclick: () => form.replaceWith(editBtn) }, "Cancel")),
     );
@@ -1206,7 +1255,7 @@ function statusLabelsPanel() {
     "section",
     { class: "panel" },
     h("h2", null, "Statuses"),
-    h("p", { class: "muted" }, "Every matter and process is in one of these categories. A matter follows its process, or its status is set by hand using these labels (also used for custom processes)."),
+    h("p", { class: "muted" }, "Every matter is in one of these categories. A matter follows its attached link, or its status is set by hand using these labels (also used for custom tools)."),
     h("div", { class: "table-wrap" }, table),
     editBtn,
   );

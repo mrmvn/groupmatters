@@ -2,6 +2,11 @@
 // No display names, no time-of-day awareness: every line works for anyone, anytime.
 // Kept out of labels.js because it's decoration, not interface wording.
 
+// Switched off for now: the add bar's own wording ("Name or link a matter: …") explains what a matter is,
+// and a joke above it competes with that. Worth bringing back on an empty list or a dedicated creation screen.
+// While off, nothing is read from or written to sessionStorage (privacy.html doesn't mention it).
+export const PROMPTS_ENABLED = false;
+
 export const PROMPTS = [
   // Warm / invitational
   "What does your group need to decide?",

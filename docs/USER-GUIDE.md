@@ -19,9 +19,9 @@ Every matter is in one of six categories: **Not started**, **In progress**, **Ac
 - A matter linked to a tool the register can read has its status **retrieved**: when the Loomio poll closes or the pull request is merged, it changes by itself.
 - Anyone can **type** a status instead, picking one of the group's status labels, like *Being discussed* or *Agreed*. "↺ use retrieved" goes back.
 
-**Around the page.** There are no tabs: the page opens on the box for adding a matter, then the matters. The **space name** (top left) always brings you back to the matters. The **Menu** (top right) has the **Dashboard**, **Tools**, **Activity**, **How this works** (the charter) and **Export** (downloads everything as JSON). The two symbols left of the search switch the items between a **list** (bulleted lines, the default) and a **timeline** (staggered bars), keeping the same search and filters.
+**Around the page.** There are no tabs: the page opens on the box for adding a matter, then the matters. The **space name** (top left) always brings you back to the matters. The **Menu** (top right) has the **Dashboard**, **Tools**, **Activity**, **About** and **Export** (downloads everything as JSON). The two symbols left of the search switch the items between a **list** (bulleted lines, the default) and a **timeline** (staggered bars), keeping the same search and filters.
 
-The lanes, below the search: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **All** (every matter that isn't archived), each with its count, plus **Archived** when there are any. Withdrawn matters: **Filters → Status → Withdrawn**. In **Filters**, **Status**, **Tool**, **Item type** and **Process state** are drop-downs of boxes: tick several to see matters that match any of them (for instance GitHub *or* Loomio). **Tool → No tool** shows the matters with no process yet. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
+The lanes, below the search: **Current** (not started and in progress), **Ended** (accepted, rejected, concluded) and **All** (every matter that isn't archived), each with its count, plus **Archived** when there are any. Withdrawn matters: **Filters → Status → Withdrawn**. In **Filters**, **Status**, **Tool** and **Item type** are drop-downs of boxes: tick several to see matters that match any of them (for instance GitHub *or* Loomio). **Tool → No tool** shows the matters with no tool attached. Cards marked **★ Changed since your last visit** have news. The list is ordered by latest activity, including activity on the linked platform.
 
 ## Adding a matter
 
@@ -68,11 +68,15 @@ To add one, first say what this matter is ("is related to", "is a child of", "is
 
 ## Shortcuts
 
-The dashboard's **Needs attention** widget links to the matters that need a nudge: current matters with no process yet, matters in progress but quiet for 30+ days (here or on the platform), and links that couldn't be read. The list then says what it shows, with a **clear** link.
+The dashboard's **Needs attention** widget links to the matters that need a nudge: current matters with no tool attached, matters in progress but quiet for 30+ days (here or on the platform), and links that couldn't be read. The list then says what it shows, with a **clear** link.
 
 ## Tools
 
-**Menu → Tools** shows the list of tools and the status labels (the charter is under **Menu → How this works**). Each tool says **what it's useful for** and how many matters use it (click the count to see them); custom processes in use are listed by kind. Anyone with edit access can **add or edit a tool** (the links it recognises; for tools read automatically, only the name and description), and edit the **status labels** (each belongs to one category). The charter is changed by whoever runs the server, for now.
+**Menu → Tools** shows the list of tools and the status labels . Each tool says **what it's useful for** and how many matters use it (click the count to see them); custom tools in use are listed by kind. Anyone with edit access can **add or edit a tool** (the links it recognises; for tools read automatically, only the name and description), and edit the **status labels** (each belongs to one category).
+
+## About
+
+**Menu → About** has two parts. **About this group** is the group's own text: who you are and how you use this space. Anyone with edit access can write or change it (Markdown works; it's hidden from viewers while empty). Below it is the app's own help, the same for every space.
 
 ## Good to know
 

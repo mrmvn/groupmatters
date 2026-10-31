@@ -504,12 +504,19 @@ test("results can be a link or plain words; a non-https link is refused", async 
   assert.throws(() => Q.updateFields(ctx, space, q, "Ana", { set: { results_url: "ftp://example.org/x" } }), /https/);
 });
 
-test("set-charter replaces the charter and logs it; empty text is refused", () => {
+test("the About text replaces the old one and logs it with the text it replaced; unchanged text isn't logged; empty clears it", () => {
   const t = makeCtx();
   const { space } = makeSpace(t.ctx);
-  setCharter(t.ctx, space.id, "# New rules\n\nBe kind.\n");
-  assert.equal(repo.getSpace(t.ctx.db, space.id)!.charter_markdown, "# New rules\n\nBe kind.\n");
-  assert.ok(actions(t.ctx, space.id).includes("charter.changed"));
-  assert.throws(() => setCharter(t.ctx, space.id, "  \n"), /empty/);
+  assert.equal(repo.getSpace(t.ctx.db, space.id)!.charter_markdown, "", "new spaces start without one");
+  setCharter(t.ctx, space.id, "# Us\n\nBe kind.\n", "Ana");
+  assert.equal(repo.getSpace(t.ctx.db, space.id)!.charter_markdown, "# Us\n\nBe kind.\n");
+  setCharter(t.ctx, space.id, "# Us\n\nBe kind.", "Ana");
+  assert.equal(repo.listActivity(t.ctx.db, space.id, {}).map((e) => e.action).filter((a) => a === "charter.changed").length, 1);
+  setCharter(t.ctx, space.id, "  \n", "Ben");
+  assert.equal(repo.getSpace(t.ctx.db, space.id)!.charter_markdown, "");
+  const last = t.ctx.db.prepare("SELECT actor, data_json FROM activity WHERE action = 'charter.changed' ORDER BY id DESC LIMIT 1").get() as any;
+  assert.equal(last.actor, "Ben");
+  assert.equal(JSON.parse(last.data_json).previous, "# Us\n\nBe kind.");
+  assert.throws(() => setCharter(t.ctx, space.id, "x".repeat(5001)), /too long/);
   assert.throws(() => setCharter(t.ctx, "nope", "x"), /No space/);
 });

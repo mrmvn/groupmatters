@@ -39,7 +39,7 @@ export function describeEvent(e: ActivityEvent, titles: Map<string, string>): st
     case "tool.added":
       return `Tool added: ${d.tool?.name}`;
     case "charter.changed":
-      return "The charter was changed";
+      return "“About this group” was edited";
     case "settings.changed":
       return "Settings were changed";
     default:
