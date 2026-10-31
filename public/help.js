@@ -25,12 +25,12 @@ export function helpSections(labels = []) {
 
     h("h2", null, "Attached link"),
     h("p", null, "A matter can have one attached link: a pull request, a poll, a forum thread… or none, for a meeting or a workshop (just give its kind)."),
-    h("p", null, "Each field of a matter is either ", h("strong", null, "retrieved"), " from the linked item, for sites on the ", link("#/rules", "Tools"), " list, or ", h("strong", null, "typed"), " by someone. A typed value wins until someone chooses to use the retrieved one again."),
+    h("p", null, "Each field of a matter is either ", h("strong", null, "retrieved"), " from the linked item, for sites on the ", link("#/tools", "Tools"), " list, or ", h("strong", null, "typed"), " by someone. A typed value wins until someone chooses to use the retrieved one again."),
 
     h("h2", null, "Status"),
     h("p", null, "Every matter is in one of six categories:"),
     states,
-    h("p", null, "A retrieved status follows the link: the poll closes, the pull request is merged. Otherwise anyone can type it, choosing one of the space's labels (each belongs to a category; they're on the ", link("#/rules", "Tools"), " page)."),
+    h("p", null, "A retrieved status follows the link: the poll closes, the pull request is merged. Otherwise anyone can type it, choosing one of the space's labels (each belongs to a category; they're on the ", link("#/tools", "Tools"), " page)."),
 
     h("h2", null, "Related matters"),
     h("p", null, "Matters can be related as parent and child, or as duplicates. The same title or link can't be added twice; when a near-duplicate is spotted, the app suggests marking it as a duplicate and withdrawing it, and people decide."),

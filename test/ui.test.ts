@@ -100,7 +100,7 @@ test("header: no tabs; the space name opens the items; the menu has Dashboard, T
   assert.equal(document.querySelector("header a.space-name")!.getAttribute("href"), "#/list");
   const items = [...document.querySelectorAll("header .menu .menu-list > *")] as any[];
   assert.deepEqual(items.map((a) => a.textContent), ["Dashboard", "Tools", "Activity", "About", "Export", "Share…"]);
-  assert.deepEqual(items.slice(0, 4).map((a) => a.getAttribute("href")), ["#/dashboard", "#/rules", "#/activity", "#/how"]);
+  assert.deepEqual(items.slice(0, 4).map((a) => a.getAttribute("href")), ["#/dashboard", "#/tools", "#/activity", "#/about"]);
   // The menu opens on its button and closes again.
   const list = document.querySelector(".menu-list") as any;
   const btn = document.querySelector(".menu-btn") as any;
@@ -113,11 +113,11 @@ test("header: no tabs; the space name opens the items; the menu has Dashboard, T
   // The page opens on the bar to add an item.
   assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or link a matter: a question, a proposal, a poll, a meeting…");
   assert.ok(!document.querySelector(".composer-prompt"), "no witty line above the bar");
-  const how = await go("#/how");
+  const how = await go("#/about");
   assert.match(how.textContent!, /About this group/);
   assert.match(how.textContent!, /Attached link/);
   assert.match(how.textContent!, /Add a description/, "an editor can write the group's own text");
-  assert.match((await go("#/rules")).textContent!, /Tool list/);
+  assert.match((await go("#/tools")).textContent!, /Tool list/);
   assert.ok(document.querySelector('main a[href="#/list"]'), "a way back to the items");
 });
 
@@ -212,9 +212,9 @@ test("every question page renders", async () => {
 });
 
 test("rules pages and activity render", async () => {
-  const rules = await go("#/rules");
+  const rules = await go("#/tools");
   assert.match(rules.textContent!, /Tool list/);
-  const add = await go("#/rules/add-tool?url=https%3A%2F%2Fforum.example.org%2Ft%2F1");
+  const add = await go("#/tools/add-tool?url=https%3A%2F%2Fforum.example.org%2Ft%2F1");
   assert.match(add.textContent!, /Add a tool/);
   assert.match((await go("#/activity")).textContent!, /added the matter/);
 });
@@ -331,7 +331,7 @@ test("flow: a link from a site not on the tool list is accepted, with a typed ti
   await submitAndSettle(input.closest("form"));
   const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title === "Should the forum be moderated?")!;
   assert.deepEqual([q.process?.tool_id, q.process?.url], ["custom", "https://forum.example.org/t/should-we-9"]);
-  assert.ok(document.querySelector('main a[href^="#/rules/add-tool"]'), "offers to add the tool");
+  assert.ok(document.querySelector('main a[href^="#/tools/add-tool"]'), "offers to add the tool");
 });
 
 test("flow: the composer shows the details fields, for typed text and for links", async () => {
@@ -404,7 +404,7 @@ test("timeline page: only dated questions, bars placed over time, same filters a
 });
 
 test("rules: status labels panel renders and edits", async () => {
-  const main = await go("#/rules");
+  const main = await go("#/tools");
   assert.match(main.textContent!, /Statuses/);
   buttons("Edit labels")[0].dispatchEvent(new window.Event("click"));
   await sleep(50);
@@ -473,7 +473,7 @@ test("flow: a question is archived from its ⋯ menu and restored from the Archi
   await go(`#/q/${q.id}`);
   assert.ok(repo.getQuestion(t.ctx.db, demo.space.id, q.id)!.removed_at);
   assert.match(document.querySelector("main")!.textContent!, /Archived/);
-  assert.doesNotMatch((await go("#/rules")).textContent!, /Removed questions/, "no longer on the Tools page");
+  assert.doesNotMatch((await go("#/tools")).textContent!, /Removed questions/, "no longer on the Tools page");
   const removed = await go("#/list?lane=archived");
   assert.match(document.querySelector("main .sublanes")!.textContent!, /Archived \(1\)/);
   assert.match((await go("#/list?lane=removed")).querySelector(".sublane.current")!.textContent!, /Archived/, "the old lane name still works");
@@ -529,32 +529,32 @@ test("flow: drop a link elsewhere → home composer; on a question without proce
 });
 
 test("add-tool page offers Consul instances, preselected for Consul-looking links", async () => {
-  const main = await go("#/rules/add-tool?url=https%3A%2F%2Fdecide.example.es%2Fproposals%2F12-x");
+  const main = await go("#/tools/add-tool?url=https%3A%2F%2Fdecide.example.es%2Fproposals%2F12-x");
   const consul = main.querySelector('input[type=radio][value=consul]') as any;
   assert.ok(consul.checked);
   assert.equal((main.querySelector('input[placeholder="https://participa.example.org"]') as any).value, "https://decide.example.es");
 });
 
 test("tool edit page: patterns and description, no state words", async () => {
-  const main = await go("#/rules/tool?id=kialo");
+  const main = await go("#/tools/tool?id=kialo");
   assert.equal(main.querySelectorAll(".map-row").length, 0);
   assert.match(main.textContent!, /the kind .* and the page title are retrieved/);
 });
 
 test("tool edit page renders for manual tools", async () => {
-  await go("#/rules/tool?id=kialo");
+  await go("#/tools/tool?id=kialo");
   assert.match(document.querySelector("main")!.textContent!, /Edit \u201cKialo\u201d/);
   assert.ok(([...document.querySelectorAll("textarea")] as any[]).some((t) => /kialo\.com\/:slug/.test(t.value)));
   assert.match((document.querySelector("textarea") as any).value, /Structured debate/, "description first");
 });
 
 test("rules list shows what each tool is for and how much it's used; automatic tools edit name and description only", async () => {
-  const rules = await go("#/rules");
+  const rules = await go("#/tools");
   assert.match(rules.textContent!, /Group decisions/);
   assert.match(rules.textContent!, /Used by/);
   assert.ok(rules.querySelector('a[href="#/list?lane=all&tool=github"]'), "usage links to the filtered list");
-  assert.ok(rules.querySelector('a[href="#/rules/tool?id=github"]'), "automatic tools have an Edit link");
-  const main = await go("#/rules/tool?id=github");
+  assert.ok(rules.querySelector('a[href="#/tools/tool?id=github"]'), "automatic tools have an Edit link");
+  const main = await go("#/tools/tool?id=github");
   assert.equal((main.querySelector("input[type=text]") as any).value, "GitHub");
   const visible = ([...main.querySelectorAll("textarea")] as any[]).filter((t) => !t.closest("[hidden]"));
   assert.equal(visible.length, 1, "only the description");
@@ -563,7 +563,7 @@ test("rules list shows what each tool is for and how much it's used; automatic t
   await sleep(150);
   await settle();
   assert.equal(repo.getTool(t.ctx.db, demo.space.id, "github")!.description, "Our code and docs");
-  assert.match(hash, /^#\/rules/);
+  assert.match(hash, /^#\/tools/);
 });
 
 test("add an attached link: the tool list with descriptions is offered as a hint", async () => {

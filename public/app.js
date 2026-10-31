@@ -2,8 +2,8 @@
 //   #/dashboard              summary widgets (the space name in the header links here)
 //   #/list?lane=current&q=…  the items, as a list or (view=timeline) as bars over time; lanes, search, filters
 //   #/q/<id>                 question page
-//   #/rules                  tools (tool list, status labels); #/rules/add-tool?url=…; #/rules/tool?id=… (edit)
-//   #/how                    how this works (the group's own text + the app's help)
+//   #/tools                  tools (tool list, status labels); #/tools/add-tool?url=…; #/tools/tool?id=… (edit)
+//   #/about                    how this works (the group's own text + the app's help)
 //   #/timeline?…             old link: the items' timeline view
 //   #/activity               activity feed
 // No tabs: the space name opens the items, the menu (top right) has Dashboard, Tools, Activity, About, Export.
@@ -250,7 +250,7 @@ function parseHash() {
 let renderSeq = 0;
 let lastPageKey = null;
 
-const PAGE_TITLES = { list: "Matters", dashboard: "Dashboard", rules: "Tools", activity: "Activity", how: "About" };
+const PAGE_TITLES = { list: "Matters", dashboard: "Dashboard", tools: "Tools", activity: "Activity", about: "About" };
 
 /** The page's <h1> (a visually hidden one when the page has none) and its text. */
 function pageHeading(parts, view) {
@@ -288,9 +288,9 @@ async function render() {
   let view;
   try {
     if (parts[0] === "q" && parts[1]) view = await pageQuestion(parts[1]);
-    else if (parts[0] === "rules") view = await pageRules(parts[1], params);
+    else if (parts[0] === "tools") view = await pageRules(parts[1], params);
     else if (parts[0] === "activity") view = await pageActivity();
-    else if (parts[0] === "how") view = pageHow();
+    else if (parts[0] === "about") view = pageHow();
     else if (parts[0] === "dashboard") view = await pageDashboard();
     else view = await pageHome(params);
   } catch (e) {
@@ -331,9 +331,9 @@ function header(section) {
     "div",
     { class: "menu-list", hidden: true },
     item("dashboard", "Dashboard"),
-    item("rules", "Tools"),
+    item("tools", "Tools"),
     item("activity", "Activity"),
-    item("how", "About"),
+    item("about", "About"),
     h("button", { type: "button", onclick: () => (closeMenus(), downloadExport()) }, "Export"),
     canEdit() ? h("button", { type: "button", onclick: () => (closeMenus(), shareDialog()) }, "Share…") : null,
   );
@@ -689,7 +689,7 @@ function composer(opts = {}) {
         h(
           "div",
           { class: "notice" },
-          h("p", null, "This site isn't on the tool list, so nothing is retrieved from the link: you'll type the title, status and dates. ", h("a", { href: `#/rules/add-tool${qs({ url })}` }, "Add this tool"), " to retrieve them."),
+          h("p", null, "This site isn't on the tool list, so nothing is retrieved from the link: you'll type the title, status and dates. ", h("a", { href: `#/tools/add-tool${qs({ url })}` }, "Add this tool"), " to retrieve them."),
         ),
         field("Matter", title),
         hints,
@@ -991,7 +991,7 @@ function processBlock(q, d, openForm) {
     if (await act(() => api("DELETE", `questions/${q.id}/process`), "Attached link removed")) await refresh();
   };
   const toolLine = custom
-    ? h("span", { class: "muted" }, p.url ? ["Not on the tool list: nothing is retrieved. ", canEditQ(q) ? h("a", { href: `#/rules/add-tool${qs({ url: p.url })}` }, "Add this tool") : null] : "No link: everything is typed.")
+    ? h("span", { class: "muted" }, p.url ? ["Not on the tool list: nothing is retrieved. ", canEditQ(q) ? h("a", { href: `#/tools/add-tool${qs({ url: p.url })}` }, "Add this tool") : null] : "No link: everything is typed.")
     : [
         h("strong", null, tool?.name ?? p.tool_id),
         h(
@@ -1117,7 +1117,7 @@ async function pageRules(sub, params) {
       { class: "panel" },
       h("h2", null, "Tool list"),
       h("p", { class: "muted" }, "Links from these tools can be attached to a matter, and their fields retrieved. Any other link, or none, makes it a custom tool, described by hand. Anyone with edit access can add a tool; no vote needed."),
-      canEdit() ? h("p", null, h("a", { class: "button", href: "#/rules/add-tool" }, "Add a tool")) : null,
+      canEdit() ? h("p", null, h("a", { class: "button", href: "#/tools/add-tool" }, "Add a tool")) : null,
       h(
         "div",
         { class: "table-wrap" },
@@ -1141,7 +1141,7 @@ async function pageRules(sub, params) {
                   ? h(
                       "td",
                       null,
-                      h("a", { class: "link", href: `#/rules/tool${qs({ id: t.id })}` }, "Edit"),
+                      h("a", { class: "link", href: `#/tools/tool${qs({ id: t.id })}` }, "Edit"),
                       " · ",
                       h("button", { class: "link", onclick: async () => (await act(() => api("POST", `tools/${t.id}/enabled`, { enabled: !t.enabled }), t.enabled ? "Tool disabled" : "Tool enabled")) && refresh() }, t.enabled ? "Disable" : "Enable"),
                     )
@@ -1336,7 +1336,7 @@ function toolFormPage({ url, tool }) {
   return h(
     "div",
     null,
-    h("a", { href: "#/rules", class: "back" }, "← Tools"),
+    h("a", { href: "#/tools", class: "back" }, "← Tools"),
     h("h1", null, tool ? `Edit “${tool.name}”` : "Add a tool"),
     h(
       "p",
@@ -1357,7 +1357,7 @@ function toolFormPage({ url, tool }) {
             btn.disabled = false;
             if (r) {
               await loadSpace();
-              location.hash = "#/rules";
+              location.hash = "#/tools";
             }
           };
           if (auto) {
