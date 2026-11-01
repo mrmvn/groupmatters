@@ -56,7 +56,7 @@ export function atomFeed(ctx: Ctx, space: Space, token: string): string {
     .map((e) => {
       const link = e.question_id ? `${base}#/q/${e.question_id}` : `${base}#/activity`;
       return `  <entry>
-    <id>urn:question-register:${esc(space.id)}:event:${e.id}</id>
+    <id>urn:groupmatters:${esc(space.id)}:event:${e.id}</id>
     <title>${esc(describeEvent(e, titles))}</title>
     <updated>${e.at}</updated>
     <author><name>${esc(e.actor)}</name></author>
@@ -66,7 +66,7 @@ export function atomFeed(ctx: Ctx, space: Space, token: string): string {
     .join("\n");
   return `<?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-  <id>urn:question-register:${esc(space.id)}</id>
+  <id>urn:groupmatters:${esc(space.id)}</id>
   <title>${esc(space.name)} — question register</title>
   <updated>${updated}</updated>
   <link rel="alternate" href="${esc(base)}"/>
