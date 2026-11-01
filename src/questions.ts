@@ -4,7 +4,7 @@
 // item or typed (see fields.ts). Linking an item whose status can be retrieved makes the status
 // follow it; anyone can type a value instead, and go back to the retrieved one.
 import type { Ctx } from "./ctx.ts";
-import type { Question, Space } from "./types.ts";
+import { CUSTOM_TOOL_ID, type Question, type Space, type TypedStatus } from "./types.ts";
 import { hierarchyLoop, RELATION_INPUTS, storedKind, type RelationInput } from "./relations.ts";
 import * as repo from "./repo.ts";
 import { tx } from "./db.ts";
@@ -57,15 +57,20 @@ function validateRelated(ctx: Ctx, space: Space, q: { id?: string }, otherId: un
 }
 
 /**
- * After a process is stored: what the question types and follows. The status follows the new item when
- * it can be retrieved; the typed kind, summary and results belonged to the previous process. A kind
- * typed with the process is kept. Fields the item can't give (title, status) are typed with their
- * current values. Doesn't save.
+ * After a process is stored: what the question types and follows. Typed values stay unless the new
+ * item gives them. The kind is dropped when a listed tool retrieves it (a link-less or unlisted
+ * process can't, so a typed kind stays). The status follows the item when it can be retrieved, unless
+ * first linking with a typed status that isn't the default "not started". When a previous process is
+ * *replaced*, the typed summary and results link described it and are dropped. A kind typed with the
+ * process is kept. Fields the item can't give (title, status) are typed with their current values.
+ * Doesn't save.
  */
-function adoptProcess(ctx: Ctx, space: Space, q: Question, actor: string, prepared: Prepared) {
+function adoptProcess(ctx: Ctx, space: Space, q: Question, actor: string, prepared: Prepared, replaced = false) {
   const now = ctx.now().toISOString();
-  for (const f of ["kind", "summary", "results_url"] as const) delete q.typed[f];
-  if (retrievable(q).has("status")) delete q.typed.status;
+  if (replaced) for (const f of ["summary", "results_url"] as const) delete q.typed[f];
+  if (q.process?.tool_id !== CUSTOM_TOOL_ID) delete q.typed.kind;
+  const typedState = (q.typed.status?.value as TypedStatus | undefined)?.state;
+  if (retrievable(q).has("status") && (replaced || typedState === "not_started")) delete q.typed.status;
   if (prepared.kind) q.typed.kind = { value: prepared.kind, by: actor, at: now };
   freezeUnretrievable(space, q, actor, now);
 }
@@ -167,11 +172,12 @@ export async function attachProcess(ctx: Ctx, space: Space, q: Question, actor: 
   const linkUrl = trimOrUndef(body?.url ?? body?.custom?.url, 2000);
   assertLinkFree(ctx, space, linkUrl, q.id);
   const prepared = await prepareProcess(ctx, space, body);
+  const replaced = !!q.process;
   tx(ctx.db, () => {
     // Checked again here: the link may have been added while the item was being fetched (S6).
     assertLinkFree(ctx, space, linkUrl, q.id);
     storeProcess(ctx, q, actor, prepared);
-    adoptProcess(ctx, space, q, actor, prepared);
+    adoptProcess(ctx, space, q, actor, prepared, replaced);
     repo.saveQuestion(ctx.db, q);
     sync(ctx, q, actor);
   });

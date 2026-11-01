@@ -120,6 +120,27 @@ test("linking a retrievable item makes the status follow it; a kind typed with t
   assert.deepEqual([src(r, "status"), r.status, r.typed.kind, src(r, "title")], ["retrieved", "accepted", undefined, "typed"]);
 });
 
+test("first link keeps what is typed (summary, results, dates)", async () => {
+  const t = makeCtx({ [GH_PR_API]: mergedPr() });
+  const { space } = makeSpace(t.ctx);
+  const a = await Q.create(t.ctx, space, "Ana", { title: "A", fields: { summary: "Mine", results_url: "Notes", start: "2099-01-01" } });
+  const ra = await Q.attachProcess(t.ctx, space, a, "Ben", { url: GH_PR });
+  assert.deepEqual([ra.typed.summary?.value, ra.typed.results_url?.value, ra.typed.start?.value], ["Mine", "Notes", "2099-01-01"]);
+  assert.equal(src(ra, "status"), "retrieved", "the default status counts as unset");
+});
+
+test("a typed kind survives linking an unlisted site (nothing retrieves it); replacing a listed link drops summary and results", async () => {
+  const t = makeCtx({ [GH_PR_API]: mergedPr() });
+  const { space } = makeSpace(t.ctx);
+  const q = await Q.create(t.ctx, space, "Ana", { title: "Q", process: { kind: "Meeting" } });
+  const r = await Q.attachProcess(t.ctx, space, q, "Ben", { url: "https://forum.example.org/t/42" });
+  assert.deepEqual([r.process?.tool_id, r.typed.kind?.value], ["custom", "Meeting"]);
+  const g = await Q.attachProcess(t.ctx, space, r, "Ben", { url: GH_PR });
+  Q.updateFields(t.ctx, space, g, "Ben", { set: { summary: "x", results_url: "y", end: "2099-02-01" } });
+  const again = await Q.attachProcess(t.ctx, space, Q.load(t.ctx, space, q.id), "Ben", { url: GH_PR });
+  assert.deepEqual([again.typed.summary, again.typed.results_url, again.typed.end?.value], [undefined, undefined, "2099-02-01"]);
+});
+
 test("custom process: no link needs a kind; any https link is accepted; its fields are typed", async () => {
   const { ctx } = makeCtx();
   const { space } = makeSpace(ctx);

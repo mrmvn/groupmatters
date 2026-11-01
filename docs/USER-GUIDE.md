@@ -35,10 +35,11 @@ Once you've typed a title or pasted a link, the **Details** (kind, status, summa
 
 ## Processes
 
-On a matter's page, the **Attached link** section (**Add an attached link…**) offers two choices:
+On a matter's page, the **Attached link** section (**Add an attached link…**) takes a link. As soon as you paste it, the form says whether its site is on the tool list and what would be retrieved:
 
 - **A link.** From GitHub, GitLab, public Loomio polls and threads, Polis, Decidim (any instance) or Consul (once your instance is added under Tools), everything is retrieved: title, status, results, dates, last activity. From Kialo, your own tools or private items, only the kind and title. From any other site, nothing. The ↗ next to a process opens it.
-- **No link**: a meeting, an unconference, a paper survey… Give its kind.
+- **What it changes.** Values you typed stay: the retrieved value is listed as "not applied", and ↺ use retrieved on the matter applies it. The exceptions: the kind and the status follow the item (a status you never chose, "Not started", counts as unset), and **replacing** a link removes the typed summary and results link that described the old one.
+- **No link**: a meeting, an unconference, a paper survey… Type its **Kind** under **Details**; that is enough.
 
 ## Retrieved or typed
 

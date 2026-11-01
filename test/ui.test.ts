@@ -274,14 +274,13 @@ test("fields: a retrieved status says so (with the platform's word); double-clic
   assert.deepEqual([r.status, r.typed.status], ["accepted", undefined]);
 });
 
-test("flow: link a custom process (a kind, no link), then type its status", async () => {
+test("flow: type a kind on a matter with no link (a link-less process), then type its status", async () => {
   const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => x.title.startsWith("Should we move the weekly call"))!;
   await go(`#/q/${q.id}`);
-  buttons("Add an attached link")[0].dispatchEvent(new window.Event("click"));
-  await sleep(50);
-  const form = document.querySelector(".inline-form") as any;
-  (form.querySelector('input[list="attach-kinds"]') as any).value = "Meeting";
-  let main = await submitAndSettle(form);
+  assert.equal(document.querySelector(".field-list dt")!.textContent, "Kind");
+  const kindEd = await editField("kind");
+  (kindEd.querySelector("input") as any).value = "Meeting";
+  let main = await submitAndSettle(kindEd);
   let r = repo.getQuestion(t.ctx.db, demo.space.id, q.id)!;
   assert.deepEqual([r.process?.tool_id, r.typed.kind?.value], ["custom", "Meeting"]);
   assert.match(main.textContent!, /No link: everything is typed/);
@@ -356,6 +355,29 @@ test("flow: the composer shows the details fields, for typed text and for links"
   const main = document.querySelector("main")!;
   assert.match(main.querySelector(".field-results_url")!.textContent!, /Not decided yet/);
   assert.equal(main.textContent!.includes("null"), false, "no stray null");
+});
+
+test("flow: attaching a link shows whether its site is on the tool list and what it would retrieve; no kind field", async () => {
+  const q = repo.listQuestions(t.ctx.db, demo.space.id).find((x) => !x.process && !x.removed_at)!;
+  await go(`#/q/${q.id}`);
+  buttons("Add an attached link")[0].dispatchEvent(new window.Event("click"));
+  await sleep(50);
+  const form = document.querySelector(".inline-form") as any;
+  assert.equal(form.querySelector('input[list="attach-kinds"]'), null, "no kind field");
+  const url = form.querySelector('input[type="url"]');
+  const type = async (v: string) => {
+    url.value = v;
+    url.dispatchEvent(new window.Event("input"));
+    await sleep(600);
+    return form.querySelector(".link-check").textContent as string;
+  };
+  assert.match(await type("https://forum.example.org/t/42"), /Not on the tool list/);
+  const ok = await type("https://github.com/nodejs/node/pull/50001");
+  assert.match(ok, /Recognised: .*GitHub/);
+  assert.match(ok, /Kind: .*[Pp]ull request .*retrieved/);
+  assert.match(ok, /Status: .*Being discussed .*retrieved, kept up to date/);
+  assert.match(await type("https://github.com/nodejs/node/pull/50000"), /already tracked by/);
+  form.querySelector("button[type=button]").click();
 });
 
 test("flow: a link from a listed tool shows what will be retrieved in the details", async () => {

@@ -12,7 +12,7 @@ import { h, extLink, fmtDate, time, timeAgo, toast, debounce } from "./dom.js";
 import { STATE, STATE_HINT, QUESTION_STATES, ENDED, CUSTOM_TOOL_ID, ROLE, RELATE_AS, itemLabel } from "./labels.js";
 import { statusPill, questionPill, statePill, questionTree, questionCard, activityItem, mappingEditor, toolIcon } from "./components.js";
 import { renderMarkdown } from "./md.js";
-import { fieldCell, createFields, retrievedFromPreview, FIELD_LABEL } from "./fields.js";
+import { fieldCell, createFields, retrievedFromPreview, showValue, FIELD_LABEL } from "./fields.js";
 import { timelineChart } from "./timeline.js";
 import { dashboardPage } from "./dashboard.js";
 import { PROMPTS_ENABLED, promptOfSession } from "./prompts.js";
@@ -903,7 +903,21 @@ function fieldCtx(q) {
 
 /** The question's fields, each retrieved from the linked item or typed. */
 function fieldsBlock(q, fc) {
-  const names = ["kind", "status", "summary", "results_url", "start", "end"].filter((f) => f !== "kind" || q.process);
+  const names = ["kind", "status", "summary", "results_url", "start", "end"];
+  // With no attached link, typing a kind attaches a link-less (custom) process of that kind, as when creating a matter.
+  const cellCtx = (f) =>
+    f !== "kind" || q.process
+      ? fc
+      : {
+          ...fc,
+          save: async ({ set }) => {
+            const kind = set?.kind;
+            if (!kind) return true;
+            const ok = await act(() => api("PUT", `questions/${q.id}/process`, { kind }), "Saved");
+            if (ok) await refresh();
+            return !!ok;
+          },
+        };
   // Read-only: hide empty fields nobody can retrieve.
   const shown = names.filter((f) => fc.editable || q.fields[f].value !== undefined || q.fields[f].retrievable);
   const anyRetrievable = names.some((f) => q.fields[f].retrievable);
@@ -911,7 +925,7 @@ function fieldsBlock(q, fc) {
     "section",
     { class: "panel fields" },
     h("h2", null, "Details"),
-    h("dl", { class: "meta field-list" }, shown.map((f) => [h("dt", null, FIELD_LABEL[f]), h("dd", null, fieldCell(f, q.fields[f], fc))])),
+    h("dl", { class: "meta field-list" }, shown.map((f) => [h("dt", null, FIELD_LABEL[f]), h("dd", null, fieldCell(f, q.fields[f], cellCtx(f)))])),
     fc.editable
       ? h(
           "p",
@@ -924,23 +938,114 @@ function fieldsBlock(q, fc) {
   );
 }
 
-/** Link a process: any link (retrieved when its site is on the tool list), or none with a kind (a meeting…). */
+/**
+ * What attaching a link will do to each field, given what the link preview retrieves. Mirrors the
+ * server (`adoptProcess`): typed values stay, except the kind (a listed tool retrieves it), the status
+ * (follows the item; on a first link a typed status other than the default "not started" stays), and,
+ * when replacing a link, the typed summary and results link (they described the old one).
+ * → [{field, retrieved, typed?, kept}]
+ */
+function attachEffects(q, replace, preview) {
+  const r = retrievedFromPreview(preview);
+  const out = [];
+  for (const f of ["kind", "status", "summary", "results_url", "start", "end"]) {
+    if (r[f] === undefined) continue;
+    const view = q.fields[f];
+    const typed = view.source === "typed" ? view : null;
+    let kept = !!typed;
+    if (f === "kind") kept = false;
+    else if (f === "status") kept = !!typed && !replace && typed.value?.state !== "not_started";
+    else if (f === "summary" || f === "results_url") kept = !!typed && !replace;
+    out.push({ field: f, retrieved: f === "status" ? { state: r.status.state, label: S.space.settings.status_labels.find((l) => l.state === r.status.state)?.label } : r[f],
+      // The default status a matter without a link gets isn't a choice: not worth mentioning.
+      typed: typed && typed.value !== undefined && !(f === "status" && !kept && typed.value?.state === "not_started") ? typed.value : undefined,
+      kept,
+    });
+  }
+  return out;
+}
+
+/** Under the link field: is the link on the tool list, and what it would retrieve (and what stays typed). */
+function attachPreview(q, replace, preview, url) {
+  if (preview.existing && preview.existing.id === q.id) return h("p", { class: "muted small" }, "This is already this matter's attached link.");
+  if (preview.existing) return h("div", { class: "notice-existing" }, "This link is already tracked by ", h("a", { href: `#/q/${preview.existing.id}` }, preview.existing.title), ": it can't be attached here too.");
+  if (!preview.matched) {
+    return h(
+      "div",
+      { class: "notice" },
+      h("p", null, "Not on the tool list: the link is kept as a reference, but nothing is retrieved from it. You type the title, status and dates. ", h("a", { href: `#/tools/add-tool${qs({ url })}` }, "Add this tool"), " to retrieve them."),
+    );
+  }
+  const effects = attachEffects(q, replace, preview);
+  const f = preview.fetched;
+  const typedGone = replace ? ["summary", "results_url"].filter((n) => q.fields[n].source === "typed" && q.fields[n].value !== undefined && q.fields[n].value !== null && !effects.some((e) => e.field === n)) : [];
+  return h(
+    "div",
+    { class: "link-preview" },
+    h(
+      "p",
+      null,
+      "✓ Recognised: ",
+      toolIcon(S.tools.find((t) => t.id === preview.tool_id) ?? { name: preview.tool_name }), " ",
+      h("strong", null, preview.tool_name), " · ", itemLabel(preview.item_type),
+      preview.fetch_mode === "manual" ? h("span", { class: "muted" }, " · only the kind and title are retrieved; status and dates stay typed") : null,
+    ),
+    preview.fetch_error ? h("p", { class: "warn" }, preview.fetch_mode === "manual" ? `${preview.fetch_error}: only the kind and title are retrieved.` : `Couldn't retrieve details right now: ${preview.fetch_error}. It will be retried.`) : null,
+    preview.fetch_mode === "auto" && f && !effects.length ? h("p", { class: "muted small" }, "The item gives nothing else for now.") : null,
+    effects.length
+      ? h(
+          "ul",
+          { class: "hint-list" },
+          effects.map((e) =>
+            h(
+              "li",
+              null,
+              h("strong", null, FIELD_LABEL[e.field], ": "),
+              showValue(e.field, e.retrieved),
+              " ",
+              e.kept
+                ? h("span", { class: "muted small" }, "· not applied: you typed ", showValue(e.field, e.typed), " (↺ use retrieved is on the matter)")
+                : h("span", { class: "muted small" }, e.typed !== undefined && e.typed !== null ? ["· retrieved, replaces what you typed (", showValue(e.field, e.typed), ")"] : "· retrieved, kept up to date"),
+            ),
+          ),
+        )
+      : null,
+    typedGone.length ? h("p", { class: "muted small" }, `Your typed ${typedGone.map((n) => FIELD_LABEL[n].toLowerCase()).join(" and ")} described the previous link and will be removed.`) : null,
+  );
+}
+
+/** Attach (or replace) the link of a matter. Without a link, type its kind under Details instead. */
 function attachForm(q, replace, prefillUrl) {
   return inlineForm(replace ? "Replace the attached link" : "Add an attached link", replace ? "Replace" : "Add", () => {
     const p = q.process;
-    const url = h("input", { type: "url", placeholder: "https://… (optional)", value: prefillUrl ?? p?.url ?? "" });
-    const kind = h("input", { type: "text", maxlength: 60, placeholder: "e.g. Meeting, General assembly, Survey", value: q.fields?.kind?.source === "typed" ? (q.fields.kind.value ?? "") : "", list: "attach-kinds" });
-    const kinds = h("datalist", { id: "attach-kinds" }, fieldCtx(q).kinds.map((k) => h("option", { value: k })));
+    const url = h("input", { type: "url", required: true, placeholder: "https://…", value: prefillUrl ?? p?.url ?? "" });
+    const area = h("div", { class: "link-check", "aria-live": "polite" });
+    let preview = null;
+    let seq = 0;
+    const check = debounce(async (v) => {
+      const mine = ++seq;
+      preview = null;
+      if (!v) return area.replaceChildren();
+      if (!/^https:\/\//i.test(v)) return area.replaceChildren(h("p", { class: "warn" }, "Only https:// links are accepted."));
+      area.replaceChildren(h("p", { class: "muted" }, "Checking the link…"));
+      try {
+        const r = await api("POST", "resolve-url", { url: v });
+        if (mine !== seq) return;
+        preview = r;
+        area.replaceChildren(attachPreview(q, replace, r, v));
+      } catch (e) {
+        if (mine === seq) area.replaceChildren(h("p", { class: "error" }, e.message));
+      }
+    }, 350);
+    url.addEventListener("input", () => check(url.value.trim()));
+    if (prefillUrl) check(prefillUrl.trim());
     return {
-      body: [
-        field("Link", url, "Links from a tool on the list are retrieved: title, status, dates… Any other link works too; its fields are then typed."),
-        toolHints(),
-        field("Kind", kind, "Needed when there's no link (a meeting, a survey…). For links from listed tools, the kind is retrieved."),
-        kinds,
-      ],
+      body: [field("Link", url, "Links from a tool on the list are retrieved: title, status, dates… Any other link works too; its fields are then typed."), area, toolHints()],
       submit: async () => {
-        if (!url.value.trim() && !kind.value.trim()) throw new Error("Give a link, or a kind");
-        await api("PUT", `questions/${q.id}/process`, { url: url.value.trim() || undefined, kind: kind.value.trim() || undefined });
+        const v = url.value.trim();
+        if (!v) throw new Error("Give a link");
+        if (preview?.existing && preview.existing.id !== q.id) throw new Error(`This link is already tracked by “${preview.existing.title}”`);
+        await api("PUT", `questions/${q.id}/process`, { url: v });
         toast("Attached link saved", "ok");
         return true;
       },
