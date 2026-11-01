@@ -1309,7 +1309,7 @@ async function pageRules(sub, params) {
   );
 }
 
-/** "About": the group's own "About this group" text, then the app's help (the same for every space). */
+/** "About": the group's own text, then the app's help (the same for every space). */
 function pageHow() {
   return h(
     "div",
@@ -1324,32 +1324,37 @@ function pageHow() {
 /** The group's own text: what it is and how it uses this space. Hidden when empty, unless you can write it. */
 function aboutPanel() {
   const text = (S.space.charter_markdown ?? "").trim();
-  if (!text && !canEdit()) return null;
+  const website = S.space.settings.website ?? "";
+  if (!text && !website && !canEdit()) return null;
   const panel = h("section", { class: "panel about" });
   const show = () =>
-    panel.replaceChildren(
-      h("h2", null, "About this group"),
+    // h() skips null children; replaceChildren() would print them as "null"
+    panel.replaceChildren(...[
+      h("h2", null, "The group behind this space"),
       text ? renderMarkdown(text) : h("p", { class: "muted" }, "Nothing here yet. Say what this group is, and how it uses this space: who takes part, which tools you use, how decisions get made."),
-      canEdit() ? h("div", { class: "row" }, h("button", { onclick: edit }, text ? "Edit" : "Add a description")) : null,
-    );
+      website ? h("p", null, "Website: ", extLink(website, website.replace(/^https?:\/\//, "").replace(/\/$/, ""))) : null,
+      canEdit() ? h("div", { class: "row" }, h("button", { onclick: edit }, text || website ? "Edit" : "Add a description")) : null,
+    ].filter(Boolean));
   const edit = () => {
-    const area = h("textarea", { rows: 8, maxlength: 5000, value: text, "aria-label": "About this group", placeholder: "e.g. We're the tenants' association of Rue X. Proposals for the monthly general assembly go here first; polls run in Loomio." });
+    const area = h("textarea", { rows: 8, maxlength: 5000, value: text, "aria-label": "About the group", placeholder: "e.g. We're the tenants' association of Rue X. Proposals for the monthly general assembly go here first; polls run in Loomio." });
     const save = h("button", { type: "submit", class: "primary" }, "Save");
+    const site = h("input", { type: "url", value: website, maxlength: 300, placeholder: "https://example.org", "aria-label": "Group website" });
     panel.replaceChildren(
-      h("h2", null, "About this group"),
+      h("h2", null, "The group behind this space"),
       h(
         "form",
         {
           onsubmit: async (e) => {
             e.preventDefault();
             save.disabled = true;
-            const r = await act(() => api("PUT", "settings/about", { markdown: area.value }), "Saved");
+            const r = await act(() => api("PUT", "settings/about", { markdown: area.value, website: site.value }), "Saved");
             save.disabled = false;
             if (r) await refresh();
           },
         },
-        h("p", { class: "muted small" }, "What this group is, and how it uses this space. Anyone with the edit link can change it, and changes are recorded in Activity. Basic Markdown works (headings, lists, **bold**, links)."),
+        h("p", { class: "muted small" }, "What this group is, and how it uses this space. Anyone with the edit link can change it, and changes are recorded in Activity. Basic Markdown works (headings, lists, **bold**, [links](https://…)); plain https:// addresses become links too."),
         area,
+        h("label", null, "Website (optional) ", site),
         h("div", { class: "row" }, save, h("button", { type: "button", onclick: show }, "Cancel")),
       ),
     );

@@ -36,6 +36,8 @@ export type StatusLabel = { label: string; state: QuestionState };
 export type SpaceSettings = {
   /** Labels offered when a status is set by hand (questions, custom processes). Editable per space. */
   status_labels: StatusLabel[];
+  /** The group's own website (https://…), shown on the About page. Optional. */
+  website?: string;
 };
 
 export const DEFAULT_STATUS_LABELS: StatusLabel[] = [

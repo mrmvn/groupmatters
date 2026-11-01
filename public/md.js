@@ -1,6 +1,6 @@
 // Minimal, safe markdown → DOM renderer. Builds nodes directly (never innerHTML), so user
 // content can't inject markup. Supports: headings, paragraphs, lists, blockquotes, hr,
-// **bold**, *italic*, `code`, [links](https://…).
+// **bold**, *italic*, `code`, [links](https://…) and bare https:// addresses.
 
 export function renderMarkdown(src) {
   const root = document.createElement("div");
@@ -61,9 +61,9 @@ export function renderMarkdown(src) {
   return root;
 }
 
-const INLINE = /(\*\*([^*]+)\*\*)|(__([^_]+)__)|(\*([^*\s][^*]*)\*)|(_([^_\s][^_]*)_)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)\s]+)\))/;
+const INLINE = /(\*\*([^*]+)\*\*)|(__([^_]+)__)|(\*([^*\s][^*]*)\*)|(_([^_\s][^_]*)_)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)\s]+)\))|(https?:\/\/[^\s<>()]+)/;
 
-function inline(parent, text) {
+function inline(parent, text, inLink = false) {
   while (text) {
     const m = INLINE.exec(text);
     if (!m) {
@@ -73,11 +73,11 @@ function inline(parent, text) {
     if (m.index) parent.append(text.slice(0, m.index));
     if (m[1] || m[3]) {
       const el = document.createElement("strong");
-      inline(el, m[2] ?? m[4]);
+      inline(el, m[2] ?? m[4], inLink);
       parent.append(el);
     } else if (m[5] || m[7]) {
       const el = document.createElement("em");
-      inline(el, m[6] ?? m[8]);
+      inline(el, m[6] ?? m[8], inLink);
       parent.append(el);
     } else if (m[9]) {
       const el = document.createElement("code");
@@ -90,10 +90,20 @@ function inline(parent, text) {
         a.href = href;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
-        inline(a, m[12]);
+        inline(a, m[12], true);
         parent.append(a);
       } else parent.append(m[0]);
-    }
+    } else if (m[14] && !inLink) {
+      // bare address: keep trailing punctuation outside the link
+      const url = m[14].replace(/[.,;:!?'"*_]+$/, "");
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = url;
+      parent.append(a);
+      parent.append(m[14].slice(url.length));
+    } else if (m[14]) parent.append(m[14]);
     text = text.slice(m.index + m[0].length);
   }
 }

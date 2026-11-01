@@ -176,7 +176,7 @@ export async function handleApi(ctx: Ctx, r: ApiReq): Promise<unknown> {
     return P.previewUrl(ctx, space, r.body.url);
   }
   if (method === "PUT" && a === "settings" && id === "about" && !b) {
-    return { space: setCharter(ctx, space.id, r.body?.markdown, actor) };
+    return { space: setCharter(ctx, space.id, r.body?.markdown, actor, r.body?.website) };
   }
   if (method === "PUT" && a === "settings" && id === "status-labels" && !b) {
     return { space: setStatusLabels(ctx, space, actor, r.body?.status_labels) };

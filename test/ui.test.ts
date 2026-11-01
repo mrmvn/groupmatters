@@ -114,7 +114,7 @@ test("header: no tabs; the space name opens the items; the menu has Dashboard, T
   assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or link a matter: a question, a proposal, a poll, a meeting…");
   assert.ok(!document.querySelector(".composer-prompt"), "no witty line above the bar");
   const how = await go("#/about");
-  assert.match(how.textContent!, /About this group/);
+  assert.match(how.textContent!, /The group behind this space/);
   assert.match(how.textContent!, /Attached link/);
   assert.match(how.textContent!, /Add a description/, "an editor can write the group's own text");
   assert.match((await go("#/tools")).textContent!, /Tool list/);
