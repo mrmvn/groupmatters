@@ -7,7 +7,7 @@ import { createSpace, rotateLink, setCharter, spaceLink } from "./spaces.ts";
 import { seedDemo } from "./demo.ts";
 import { exportSpace } from "./export.ts";
 
-const USAGE = `Group Matters — operator commands
+const USAGE = `GroupMatters — operator commands
 
   create-space "<name>"            Create a space; prints its edit and view links (shown once)
   create-demo                      Create a demo space with example questions

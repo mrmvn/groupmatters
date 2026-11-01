@@ -1,6 +1,6 @@
-# Group Matters
+# GroupMatters
 
-A small web app where a group collects questions that need a collective answer. Each question can be attached to the process where it's worked on (a GitHub PR, a Loomio poll, a Polis conversation, a meeting…), and its status follows that process or is set by hand.
+Keep track of your group's matters, and link them to where they're worked on. Each matter can be attached to the process where it's worked on (a GitHub PR, a Loomio poll, a Polis conversation, a meeting…), and its status follows that process or is set by hand.
 
 This is **v0**, built for a month-long pilot with one real group.
 

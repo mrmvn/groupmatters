@@ -405,7 +405,7 @@ test("footer: Source and Privacy everywhere; Contact only when configured, escap
     const r = await fetchLocal(p);
     assert.equal(r.status, 200, p);
     const html = await r.text();
-    assert.match(html, /<footer class="site-footer"><a href="\/">Group Matters<\/a> · <a href="https:\/\/github\.com\/mrmvn\/groupmatters"[^>]*>Source<\/a> · <a href="\/privacy">Privacy<\/a><\/footer>/, p);
+    assert.match(html, /<footer class="site-footer"><a href="\/">GroupMatters<\/a> · <a href="https:\/\/github\.com\/mrmvn\/groupmatters"[^>]*>Source<\/a> · <a href="\/privacy">Privacy<\/a><\/footer>/, p);
     assert.doesNotMatch(html, /mailto:|FOOTER/, p);
   }
   assert.doesNotMatch(await (await fetchLocal("/privacy")).text(), /Hosting|HOSTING/);

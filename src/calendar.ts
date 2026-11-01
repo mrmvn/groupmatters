@@ -79,7 +79,7 @@ export function calendarFeed(ctx: Ctx, space: Space, token: string): string {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Group Matters//Matter register//EN",
+    "PRODID:-//GroupMatters//Matter register//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${icsText(space.name)}`,

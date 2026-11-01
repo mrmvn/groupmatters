@@ -72,11 +72,11 @@ const errorJson = (e: unknown): Res => {
 
 const escHtml = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-/** The footer shared by the static pages and the SPA shell: Group Matters · Source · Privacy · Contact (when configured). */
+/** The footer shared by the static pages and the SPA shell: GroupMatters · Source · Privacy · Contact (when configured). */
 export function footerHtml(ctx: Ctx): string {
   const { sourceUrl, contactEmail } = ctx.config;
   const parts = [
-    `<a href="/">Group Matters</a>`,
+    `<a href="/">GroupMatters</a>`,
     `<a href="${escHtml(sourceUrl)}" target="_blank" rel="noopener">Source</a>`,
     `<a href="/privacy">Privacy</a>`,
     contactEmail ? `<a href="mailto:${escHtml(contactEmail)}">Contact</a>` : "",

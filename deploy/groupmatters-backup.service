@@ -1,6 +1,6 @@
 # /etc/systemd/system/groupmatters-backup.service
 [Unit]
-Description=Group Matters SQLite backup
+Description=GroupMatters SQLite backup
 
 [Service]
 Type=oneshot

@@ -1,7 +1,7 @@
 {
-  "name": "Group Matters",
+  "name": "GroupMatters",
   "short_name": "Matters",
-  "description": "The matters our group wants to answer together, and where each one stands.",
+  "description": "Keep track of your group's matters, and link them to where they're worked on.",
   "display": "standalone",
   "scope": "/s/",
   "background_color": "#f7f6f2",

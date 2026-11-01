@@ -1,6 +1,6 @@
 # /etc/systemd/system/groupmatters-backup.timer
 [Unit]
-Description=Daily Group Matters backup
+Description=Daily GroupMatters backup
 
 [Timer]
 OnCalendar=*-*-* 03:30:00

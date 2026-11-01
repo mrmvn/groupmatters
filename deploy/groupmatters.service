@@ -1,6 +1,6 @@
 # /etc/systemd/system/groupmatters.service
 [Unit]
-Description=Group Matters
+Description=GroupMatters
 After=network-online.target
 Wants=network-online.target
 

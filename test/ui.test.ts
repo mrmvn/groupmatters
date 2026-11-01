@@ -200,7 +200,7 @@ test("search, dashboard shortcuts and filters render", async () => {
     const page = await go(`#/list?preset=${p}`);
     assert.match(page.textContent!, /Showing .* · clear/, "a shortcut from the dashboard says what it shows");
   }
-  assert.equal(document.title, `${demo.space.name} · Group Matters`, "the matters page: just the space and the product");
+  assert.equal(document.title, `${demo.space.name} · GroupMatters`, "the matters page: just the space and the product");
   await go("#/list?lane=all&status=accepted&source=process&tool=custom&sort=created");
 });
 

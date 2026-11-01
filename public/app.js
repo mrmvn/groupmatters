@@ -1,4 +1,4 @@
-// Group Matters — single-page UI. Hash routes:
+// GroupMatters — single-page UI. Hash routes:
 //   #/dashboard              summary widgets (the space name in the header links here)
 //   #/list?lane=current&q=…  the items, as a list or (view=timeline) as bars over time; lanes, search, filters
 //   #/q/<id>                 question page
@@ -29,7 +29,7 @@ const canEditQ = (q) => canEdit() && !q.removed_at;
 async function loadSpace() {
   const d = await api("GET", "space");
   Object.assign(S, d);
-  if (!document.title.includes("·")) document.title = `${S.space.name} · Group Matters`;
+  if (!document.title.includes("·")) document.title = `${S.space.name} · GroupMatters`;
 }
 
 async function boot() {
@@ -256,10 +256,10 @@ const PAGE_TITLES = { list: "Matters", dashboard: "Dashboard", tools: "Tools", a
 function pageHeading(parts, view) {
   let h1 = document.querySelector("main h1");
   if (!h1) {
-    h1 = h("h1", { class: "visually-hidden" }, PAGE_TITLES[parts[0] ?? "list"] ?? "Group Matters");
+    h1 = h("h1", { class: "visually-hidden" }, PAGE_TITLES[parts[0] ?? "list"] ?? "GroupMatters");
     document.getElementById("main").prepend(h1);
   }
-  if (!h1.textContent.trim()) h1.textContent = PAGE_TITLES[parts[0] ?? "list"] ?? "Group Matters";
+  if (!h1.textContent.trim()) h1.textContent = PAGE_TITLES[parts[0] ?? "list"] ?? "GroupMatters";
   return h1;
 }
 
@@ -305,8 +305,8 @@ async function render() {
   lastPageKey = pageKey;
   app.replaceChildren(header(parts[0] ?? "list"), h("main", { id: "main" }, view));
   const heading = pageHeading(parts, view);
-  // The matters page is the home page of the space: its tab is just "<Space> · Group Matters".
-  document.title = !parts[0] || parts[0] === "list" ? `${S.space.name} · Group Matters` : `${heading.textContent} · ${S.space.name} · Group Matters`;
+  // The matters page is the home page of the space: its tab is just "<Space> · GroupMatters".
+  document.title = !parts[0] || parts[0] === "list" ? `${S.space.name} · GroupMatters` : `${heading.textContent} · ${S.space.name} · GroupMatters`;
   if (keep) restoreFocus(keep);
   else if (!firstLoad) {
     heading.tabIndex = -1;

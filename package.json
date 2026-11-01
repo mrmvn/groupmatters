@@ -1,7 +1,7 @@
 {
-  "name": "ourquestions",
+  "name": "groupmatters",
   "version": "0.1.0",
-  "description": "Question register: a process-agnostic register of questions a group needs to answer collectively.",
+  "description": "Keep track of your group's matters, and link them to where they're worked on.",
   "private": true,
   "type": "module",
   "engines": {
