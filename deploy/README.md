@@ -7,8 +7,8 @@ Generic files only: no hostnames or users live in the repo. Put them in `~/.ssh/
 
 ```sh
 # 0. Basics: firewall (22, 80, 443 only), SSH keys only, unattended-upgrades
-apt install -y ufw sqlite3 rsync curl debian-keyring caddy   # caddy: see caddyserver.com/docs/install#debian-ubuntu-raspbian if not in your Debian
-ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw enable
+apt install -y ufw sqlite3 rsync curl git caddy   # Caddy not in your Debian? see caddyserver.com/docs/install#debian-ubuntu-raspbian
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw enable   # check `ufw show added` lists SSH before enable
 
 # 1. Node >= 24 (NodeSource or the official tarball in /usr/local); check: node -v
 # 2. Service user and code directory (owned by your deploy user, read by the service)
@@ -16,8 +16,9 @@ useradd --system --home /var/lib/groupmatters --shell /usr/sbin/nologin groupmat
 mkdir -p /opt/groupmatters && chown "$DEPLOY_USER": /opt/groupmatters
 
 # 3. Config (secrets stay out of the code directory)
-install -m 600 -o root -g root /dev/null /etc/groupmatters.env
-cat >> /etc/groupmatters.env <<'ENV'
+# (group-readable so the service user can run the CLI with --env-file)
+install -m 640 -o root -g groupmatters /dev/null /etc/groupmatters.env
+tee -a /etc/groupmatters.env >/dev/null <<'ENV'
 PUBLIC_URL=https://groupmatters.org
 SOURCE_URL=https://github.com/mrmvn/groupmatters
 CONTACT_EMAIL=
@@ -27,7 +28,10 @@ ENV
 
 # 4. Allow the deploy user to restart the service without a password
 echo '<deploy-user> ALL=(root) NOPASSWD: /usr/bin/systemctl restart groupmatters' > /etc/sudoers.d/groupmatters
+chmod 440 /etc/sudoers.d/groupmatters && visudo -c
 ```
+
+Run the block as root (`sudo -i`); `useradd`, `ufw` etc. live in `/usr/sbin`, which isn't on a normal user's `PATH`.
 
 Then fetch the code (the repo is public, so a plain https clone works) and install the service files:
 
@@ -54,7 +58,12 @@ Schema migrations snapshot the DB first (`register.sqlite.before-vN.bak` in `/va
 ## Backups
 
 The timer runs `backup.sh` daily (14 generations in `/var/lib/groupmatters/backups`, integrity-checked).
-`./deploy/pull-backups.sh` copies them to your machine. **Test a restore once**: stop the service, copy a backup over
-`register.sqlite`, delete `-wal`/`-shm`, start.
+`./deploy/pull-backups.sh` copies them to your machine. **Test a restore once**:
+```sh
+sudo systemctl stop groupmatters
+sudo -u groupmatters cp /var/lib/groupmatters/backups/register-YYYY-MM-DD.sqlite /var/lib/groupmatters/register.sqlite
+sudo rm -f /var/lib/groupmatters/register.sqlite-wal /var/lib/groupmatters/register.sqlite-shm
+sudo systemctl start groupmatters
+```
 
 Check: `systemctl list-timers groupmatters-backup.timer`, `journalctl -u groupmatters -f`.

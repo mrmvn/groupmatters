@@ -40,6 +40,8 @@ node src/cli.ts create-demo     # or: node src/cli.ts create-space "Our group"
 npm start                       # http://localhost:3000, then open the printed edit link
 ```
 
+> **Production on a Debian VPS** (systemd + Caddy, git-based updates, daily backups): see [`deploy/README.md`](../deploy/README.md).
+
 ## Small VPS with Docker
 
 ```sh
