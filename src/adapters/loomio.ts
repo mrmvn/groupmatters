@@ -107,7 +107,7 @@ export const loomio: Adapter = {
   },
   async fetch(parsed: Parsed, ctx: Ctx): Promise<FetchResult> {
     const kind = parsed.item_type === "poll" ? "polls" : "discussions";
-    const r = await getJson(ctx, `https://${HOST}/api/v1/${kind}/${encodeURIComponent(parsed.ids.key)}`, { Accept: "application/json", "User-Agent": "question-register" }, HOST);
+    const r = await getJson(ctx, `https://${HOST}/api/v1/${kind}/${encodeURIComponent(parsed.ids.key)}`, { Accept: "application/json", "User-Agent": "groupmatters" }, HOST);
     check(r.status, r.json);
     return { fetched: kind === "polls" ? normalizePoll(r.json, ctx.now()) : normalizeDiscussion(r.json) };
   },

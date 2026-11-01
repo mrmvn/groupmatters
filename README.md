@@ -1,8 +1,8 @@
 # GroupMatters
 
-Keep track of your group's matters, and link them to where they're worked on. Each matter can be attached to the process where it's worked on (a GitHub PR, a Loomio poll, a Polis conversation, a meeting…), and its status follows that process or is set by hand.
+Keep track of your group's matters, and link them to where they're worked on. Each matter can be attached to an external link (a GitHub PR, a Loomio poll, a Polis conversation, a meeting…), and its status follows that process or is set by hand. Some tool adaptors are built-in, but new ones can be added. 
 
-This is **v0**, built for a month-long pilot with one real group.
+This is a prototype for experimentation.
 
 ## Quick start
 
@@ -19,50 +19,31 @@ Create a real space with `node src/cli.ts create-space "Our group"`. It prints a
 
 ## What's in it
 
-- Questions with a **status category** (not started, in progress, accepted, rejected, concluded, withdrawn). A question follows its process, or its status is set by hand from the space's editable status labels. Relations between questions (parent/child, related, duplicate), shown on both sides; children are listed under their parents, and duplicates suggest being withdrawn.
-- One process per question: a link from the space's **tool list**, or a **custom** process (a meeting, an unconference…) with or without a link. GitHub, GitLab, public Loomio polls/threads, Polis, OpaVote, Decidim (any instance) and Consul Democracy (per instance) are fetched automatically (state, results, last activity); Metaculus too with an API token. Other tools are updated by hand, with the page title used to prefill questions. See `docs/TOOLS.md`.
-- A **dashboard** (in the top-right menu): prototype widgets of fixed sizes for tools, statuses, momentum, attention and recent answers, each hideable (collective numbers only: no individual rankings).
-- A **Tools** page (tool list, status labels, editable by anyone with edit access), **About** (the group's own "About this group" text, editable, plus the app's help), the activity log and export, from the top-right menu.
-- An append-only **activity log** (enforced by database triggers), "changed since your last visit", an Atom feed, an ICS calendar of start/end dates and a full JSON export. Installable on phones (web app manifest).
+- **Matters** with a status category (not started, in progress, accepted, rejected, concluded, withdrawn), either followed from their process or set by hand using the space's editable status labels. Relations between matters (parent/child, related, duplicate).
+- **One attached link per matter**: a URL allowed from the space's tool list, or a custom process (a meeting, an unconference…). GitHub, GitLab, public Loomio polls/threads, Polis, OpaVote, Decidim and Consul Democracy are fetched automatically; Metaculus too with an API token. Other links are updated by hand. See `docs/TOOLS.md`.
+- A **dashboard** with collective numbers only (no individual rankings), a **timeline** view, **Tools** and **About** pages, and "changed since your last visit".
+- An append-only **activity log** (enforced by database triggers), an Atom feed, an ICS calendar and a full JSON export. Installable on phones.
 - Access by secret link plus a display name; no accounts.
-
-The v0 decision model (adopt, resolution criteria, objection windows, stewards, active cap, dormancy, Rules proposals) was removed to keep things simple; see `DECISIONS.md`.
 
 ## Layout
 
 ```
-src/            server (TypeScript, run directly by Node)
-  types.ts      domain types
-  questions.ts  questions: create, edit, status, relations
-  processes.ts  attach / refresh / hand-set states; questions follow their process
-  tools.ts      tool registry + URL matching
-  adapters/     GitHub, GitLab, Loomio, Polis, OpaVote, Metaculus, Decidim, Consul
-  pagetitle.ts  title pre-fill for other tools (with SSRF guard)
-  rules.ts      tool list and status labels
-  http/         router + JSON API
-  cli.ts        operator commands
-public/         UI (vanilla JS modules, no build)
-test/           node:test suites + recorded API fixtures
-docs/           API, tools & statuses, export format, deployment, user guide
-DECISIONS.md    implementation decisions
+src/        server (TypeScript, run directly by Node): questions, processes, adapters/, http/, cli.ts…
+public/     UI (vanilla JS modules, no build)
+test/       node:test suites + recorded API fixtures
+docs/       user guide, deployment, API, tools, export format
+deploy/     VPS deployment scripts and systemd/Caddy files
 ```
 
 ## Documentation
 
-| File | What it is |
-|---|---|
-| `docs/USER-GUIDE.md` | One-page guide for the pilot group |
-| `docs/DEPLOY.md` | Configuration, Docker/VPS, backups, security notes |
-| `docs/API.md` | JSON API |
-| `docs/TOOLS.md` | What each platform exposes (states, last activity) and how states map to categories |
-| `docs/EXPORT.md` | Export format `question-register/v3` |
-| `DECISIONS.md` | Implementation decisions and M0 API findings |
+- `docs/USER-GUIDE.md`: one-page guide for a group
+- `docs/DEPLOY.md`: configuration, Docker/VPS, backups, security
+- `docs/API.md`: JSON API
+- `docs/TOOLS.md`: what each platform exposes and how states map to categories
+- `docs/EXPORT.md`: export format
+- `DECISIONS.md`: implementation decisions
 
-## Design documents (historical hand-off pack)
+## License
 
-| File | What it is |
-|---|---|
-| `01-project.md` | Vision, problem, users, principles, non-goals, prior art |
-| `02-v0-spec.md` | The v0 specification (historical: see `DECISIONS.md` and `docs/` for current behaviour) |
-| `03-plan.md` | Milestones, acceptance criteria, stack suggestions, security checklist |
-| `04-charter-template.md` | Historical: the default rules of the earlier model (the app's help is now in `public/help.js`) |
+[GNU AGPL-3.0](LICENSE). If you run a modified version as a service, you must offer its source to your users.

@@ -335,7 +335,7 @@ test("removed decision endpoints are gone", async () => {
 
 test("export contains everything; feed works; activity readable", async () => {
   const ex = await api(viewToken, "GET", "export");
-  assert.equal(ex.json.format, "question-register/v5");
+  assert.equal(ex.json.format, "groupmatters/v5");
   assert.ok(ex.json.questions.length > 0);
   assert.ok(ex.json.tools.length >= 6);
   assert.ok(ex.json.activity.length > 0);

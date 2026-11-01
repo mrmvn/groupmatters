@@ -1,10 +1,10 @@
-# Export format — `question-register/v5`
+# Export format — `groupmatters/v5`
 
 `GET /api/s/<token>/export` (or `node src/cli.ts export <space-id>`) returns one JSON document containing everything in a space. Token hashes are never included. Changes within a version are **additive only** (new optional fields). Anything else bumps the version. Import is deferred, but this format is what it will read.
 
 ```jsonc
 {
-  "format": "question-register/v5",
+  "format": "groupmatters/v5",
   "exported_at": "2026-01-10T12:00:00.000Z",   // all datetimes: ISO 8601, UTC
   "space": {
     "id": "…", "name": "…", "created_at": "…",

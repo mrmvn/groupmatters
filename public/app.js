@@ -591,7 +591,7 @@ async function pageHome(params) {
     const { items, undated, now } = await api("GET", `timeline${qs(query)}`);
     const assumedStart = items.filter((it) => it.start.source === "assumed").length;
     const undatedNote = undated
-      ? h("p", { class: "muted small" }, `${undated} matter${undated === 1 ? " has" : "s have"} no start date and ${undated === 1 ? "isn't" : "aren't"} shown. Dates come from the linked process, or can be set on each matter.`)
+      ? h("p", { class: "muted small" }, `${undated} matter${undated === 1 ? " has" : "s have"} no start date and ${undated === 1 ? "isn't" : "aren't"} shown. Dates come from the attached link, or can be set on each matter.`)
       : null;
     body = [
       h(
@@ -612,9 +612,9 @@ async function pageDashboard() {
   return dashboardPage(d, { since: S.since, role: S.role, name: S.space.name, tools: S.tools, back: backToItems() });
 }
 
-/** The add bar: "Name or link a matter", with a few examples of what a matter can be when there's room. */
-const COMPOSER_HELP = "Name or link a matter";
-const COMPOSER_EXAMPLES = "Name or link a matter: a question, a proposal, a poll, a meeting…";
+/** The add bar: "Name a matter or paste a link", with examples of what a matter can be when there is room. */
+const COMPOSER_HELP = "Name a matter or paste a link";
+const COMPOSER_EXAMPLES = "Name or paste any matter: a question, a deliberative process, a proposal, a poll, a forecast…";
 const roomForExamples = () => typeof matchMedia !== "function" || matchMedia("(min-width: 561px)").matches;
 
 function composer(opts = {}) {
@@ -829,7 +829,7 @@ async function pageQuestion(id) {
           h("strong", null, "Archived"),
           " ",
           time(q.removed_at, timeAgo(q.removed_at)),
-          ". It's hidden from lists and its process is no longer refreshed.",
+          ". It's hidden from lists and its attached link is no longer refreshed.",
           canEdit() ? [" ", h("button", { onclick: async () => (await act(() => api("POST", `questions/${q.id}/restore`), "Restored")) && refresh() }, "Restore")] : null,
           " ",
           h("a", { href: "#/list?lane=archived" }, "All archived"),
@@ -1530,7 +1530,7 @@ function toolFormPage({ url, tool }) {
       },
       tool ? null : h("div", { class: "radios" }, kindRadio("manual", "Any website, updated by hand"), kindRadio("consul", "A Consul Democracy instance (followed automatically)")),
       field("Tool name", name),
-      field("What is it useful for?", description, "Optional. Shown in the tool list and when someone links a process, to help pick the right tool."),
+      field("What is it useful for?", description, "Optional. Shown in the tool list and when someone attaches a link, to help pick the right tool."),
       auto
         ? h(
             "div",

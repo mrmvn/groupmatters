@@ -99,7 +99,7 @@ export function processChip(q, tools, filters) {
     { class: "chip" },
     processIcon(q, tools),
     label,
-    process.url ? h("a", { href: process.url, target: "_blank", rel: "noopener noreferrer", class: "chip-ext", title: `Open on ${custom ? new URL(process.url).hostname : toolName(tools, process.tool_id)}`, "aria-label": "Open the process (new tab)" }, "↗") : null,
+    process.url ? h("a", { href: process.url, target: "_blank", rel: "noopener noreferrer", class: "chip-ext", title: `Open on ${custom ? new URL(process.url).hostname : toolName(tools, process.tool_id)}`, "aria-label": "Open the attached link (new tab)" }, "↗") : null,
     hasState ? [" · ", statePill(f.state, f.raw_state)] : null,
     key ? h("span", { class: "muted" }, ` · ${extra[key]} ${key.replace(/_/g, " ")}`) : null,
     f?.fetch_error ? h("span", { class: "warn", title: f.fetch_error }, " ⚠") : null,

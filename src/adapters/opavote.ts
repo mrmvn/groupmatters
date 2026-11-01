@@ -58,7 +58,7 @@ export const opavote: Adapter = {
     return m ? { item_type: "vote", ids: { eid: m[1] } } : null;
   },
   async fetch(parsed: Parsed, ctx: Ctx): Promise<FetchResult> {
-    const r = await getJson(ctx, `https://${HOST}/api/v1/items/${encodeURIComponent(parsed.ids.eid)}`, { Accept: "application/json", "User-Agent": "question-register" }, HOST);
+    const r = await getJson(ctx, `https://${HOST}/api/v1/items/${encodeURIComponent(parsed.ids.eid)}`, { Accept: "application/json", "User-Agent": "groupmatters" }, HOST);
     if (r.status === 429) throw new AdapterError("OpaVote rate limit reached; will retry later", 15 * 60_000);
     const j = r.json;
     if (!j || typeof j !== "object" || Array.isArray(j)) throw new AdapterError(`OpaVote returned HTTP ${r.status}`);

@@ -151,7 +151,7 @@ export const consul: Adapter = {
       tolerantQuery(async (fields) => {
         const url = `https://${host}/graphql?query=${encodeURIComponent(buildQuery(parsed, fields, casing))}`;
         // Some instances reject requests without a browser-like user agent (Consul docs).
-        const r = await getJson(ctx, url, { Accept: "application/json", "User-Agent": "Mozilla/5.0 (compatible; question-register)" }, host);
+        const r = await getJson(ctx, url, { Accept: "application/json", "User-Agent": "Mozilla/5.0 (compatible; groupmatters)" }, host);
         if (r.status === 429) throw new AdapterError("Consul rate limit reached; will retry later", 15 * 60_000);
         if (r.status !== 200 || !r.json || typeof r.json !== "object") throw new AdapterError(`No Consul API answered at ${host} (HTTP ${r.status})`);
         return r.json;

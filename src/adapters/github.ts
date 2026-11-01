@@ -51,7 +51,7 @@ function headers(ctx: Ctx, etag?: string): Record<string, string> {
   const h: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "question-register",
+    "User-Agent": "groupmatters",
   };
   if (ctx.config.githubToken) h.Authorization = `Bearer ${ctx.config.githubToken}`;
   if (etag) h["If-None-Match"] = etag;

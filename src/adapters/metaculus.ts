@@ -63,7 +63,7 @@ export const metaculus: Adapter = {
     const r = await getJson(
       ctx,
       `https://${HOST}/api/posts/${encodeURIComponent(parsed.ids.id)}/`,
-      { Accept: "application/json", Authorization: `Token ${ctx.config.metaculusToken}`, "User-Agent": "question-register" },
+      { Accept: "application/json", Authorization: `Token ${ctx.config.metaculusToken}`, "User-Agent": "groupmatters" },
       HOST,
     );
     if (r.status === 404) throw new AdapterError("Not found on Metaculus");

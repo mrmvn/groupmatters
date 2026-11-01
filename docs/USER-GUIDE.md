@@ -25,7 +25,7 @@ The lanes, below the search: **Current** (not started and in progress), **Ended*
 
 ## Adding a matter
 
-Type in the box at the top: **"Name or link your process"** You can also **drag a link** from another tab anywhere onto the page; on a matter without a process, a dropped link becomes its process.
+Type in the box at the top: **"Name a matter or paste a link"**. You can also **drag a link** from another tab anywhere onto the page; on a matter without an attached link, a dropped link gets attached.
 
 - **Typing a matter**: similar existing matters appear below. Check them first, then press *Add matter*.
 - **Pasting a link** (a GitHub pull request, a Loomio poll, a Polis conversation…): the register recognises the tool and fills in the retrieved title. Keep it to follow the item's title, or rewrite it in your own words (it's then typed).
@@ -33,11 +33,11 @@ Type in the box at the top: **"Name or link your process"** You can also **drag 
 
 Once you've typed a title or pasted a link, the **Details** (kind, status, summary, results, start, end) appear below, all optional. For a link the register can read, they are **pre-filled with what it retrieves** (tagged "retrieved") and keep following the item; change one to type your own. Without a link, fill what you know now; everything can be changed on the matter's page. *Results* takes a link or a few words ("Adopted 9–1").
 
-## Processes
+## Attached links
 
 On a matter's page, the **Attached link** section (**Add an attached link…**) takes a link. As soon as you paste it, the form says whether its site is on the tool list and what would be retrieved:
 
-- **A link.** From GitHub, GitLab, public Loomio polls and threads, Polis, Decidim (any instance) or Consul (once your instance is added under Tools), everything is retrieved: title, status, results, dates, last activity. From Kialo, your own tools or private items, only the kind and title. From any other site, nothing. The ↗ next to a process opens it.
+- **A link.** From GitHub, GitLab, public Loomio polls and threads, Polis, Decidim (any instance) or Consul (once your instance is added under Tools), everything is retrieved: title, status, results, dates, last activity. From Kialo, your own tools or private items, only the kind and title. From any other site, nothing. The ↗ next to an attached link opens it.
 - **What it changes.** Values you typed stay: the retrieved value is listed as "not applied", and ↺ use retrieved on the matter applies it. The exceptions: the kind and the status follow the item (a status you never chose, "Not started", counts as unset), and **replacing** a link removes the typed summary and results link that described the old one.
 - **No link**: a meeting, an unconference, a paper survey… Type its **Kind** under **Details**; that is enough.
 

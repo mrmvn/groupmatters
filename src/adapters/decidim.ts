@@ -166,7 +166,7 @@ export const decidim: Adapter = {
     if (!(await hostIsPublic(ctx, host))) throw new AdapterError("This address isn't reachable from the register");
     const url = `https://${host}/api`;
     const json = await tolerantQuery(async (fields) => {
-      const r = await getJson(ctx, url, { Accept: "application/json", "User-Agent": "question-register" }, host, { query: buildQuery(parsed, fields) });
+      const r = await getJson(ctx, url, { Accept: "application/json", "User-Agent": "groupmatters" }, host, { query: buildQuery(parsed, fields) });
       if (r.status === 429) throw new AdapterError("Decidim rate limit reached; will retry later", 15 * 60_000);
       if (r.status !== 200 || !r.json || typeof r.json !== "object") throw new AdapterError(`No Decidim API answered at ${host} (HTTP ${r.status})`);
       return r.json;

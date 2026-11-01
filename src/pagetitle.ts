@@ -51,7 +51,7 @@ export function isGenericTitle(title: string, url: string, toolName?: string): b
 export async function fetchPageTitle(ctx: Ctx, url: string, toolName?: string): Promise<string | undefined> {
   try {
     const res = await safeFetch(ctx, url, {
-      headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "question-register (title preview)" },
+      headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "groupmatters (title preview)" },
       timeoutMs: 8_000,
       maxBytes: MAX_BYTES,
       truncate: true,

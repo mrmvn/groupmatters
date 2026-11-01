@@ -72,7 +72,7 @@ export const gitlab: Adapter = {
     const { host, project, iid } = parsed.ids;
     if (!ctx.config.gitlabHosts.includes(host)) throw new AdapterError(`GitLab host ${host} is not allowed on this server`);
     const kind = parsed.item_type === "merge_request" ? "merge_requests" : "issues";
-    const h: Record<string, string> = { Accept: "application/json", "User-Agent": "question-register" };
+    const h: Record<string, string> = { Accept: "application/json", "User-Agent": "groupmatters" };
     if (ctx.config.gitlabToken && host === "gitlab.com") h["PRIVATE-TOKEN"] = ctx.config.gitlabToken;
     if (opts.etag) h["If-None-Match"] = opts.etag;
     const url = `https://${host}/api/v4/projects/${encodeURIComponent(project)}/${kind}/${encodeURIComponent(iid)}`;

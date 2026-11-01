@@ -18,10 +18,10 @@ export function helpSections(labels = []) {
   );
   return [
     h("h2", null, "What this is for"),
-    h("p", null, "A place where a group keeps track of the matters it needs to settle together. A ", h("strong", null, "matter"), " is anything the group needs to look into, decide or follow: a question, a proposal, an experiment, an issue. This isn't where the discussion happens; a matter points to where the work does."),
+    h("p", null, "A place where a group keeps track of its matters. A ", h("strong", null, "matter"), " is anything the group needs to look into, decide or follow: a deliberation, a question, a proposal, a vote, an experiment, an issue... Often, matters represent processes with a start and/or end date. Here is not where decision or deliberation happens though; a matter points to where the work does."),
 
     h("h2", null, "Adding a matter"),
-    h("p", null, "Type a title, or paste a link, in the box at the top of ", link("#/list", "Matters"), ". Suggestions appear as you type, because the matter may already exist. Everything else (kind, status, summary, results, dates) can be filled in now or later. Matters with dates also show on the timeline."),
+    h("p", null, "Type a title, or paste/drop a link, in the box at the top of ", link("#/list", "Matters"), ". Suggestions appear as you type, because the matter may already exist. Everything else (kind, status, summary, results, dates) can be filled in now or later. Matters with dates also show on the timeline."),
 
     h("h2", null, "Attached link"),
     h("p", null, "A matter can have one attached link: a pull request, a poll, a forum thread… or none, for a meeting or a workshop (just give its kind)."),

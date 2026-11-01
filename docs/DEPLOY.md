@@ -45,12 +45,12 @@ npm start                       # http://localhost:3000, then open the printed e
 ## Small VPS with Docker
 
 ```sh
-docker build -t question-register .
+docker build -t groupmatters .
 docker volume create register-data
 docker run -d --name register --restart unless-stopped \
   -p 127.0.0.1:3000:3000 -v register-data:/data \
   -e PUBLIC_URL=https://groupmatters.org \
-  question-register
+  groupmatters
 
 docker exec register node src/cli.ts create-space "Our group"
 ```
@@ -113,9 +113,9 @@ Run **one instance only**: the scheduler runs in-process.
 
 ```ini
 [Service]
-WorkingDirectory=/opt/question-register
+WorkingDirectory=/opt/groupmatters
 ExecStart=/usr/bin/node src/main.ts
-Environment=HOST=127.0.0.1 PORT=3000 DB_PATH=/var/lib/question-register/register.sqlite PUBLIC_URL=https://groupmatters.org
+Environment=HOST=127.0.0.1 PORT=3000 DB_PATH=/var/lib/groupmatters/register.sqlite PUBLIC_URL=https://groupmatters.org
 User=register
 Restart=on-failure
 ```
@@ -137,7 +137,7 @@ In Docker, prefix these with `docker exec register`.
 The database uses WAL mode, so don't just copy the file while the server is running. Use SQLite's online backup:
 
 ```sh
-sqlite3 /var/lib/question-register/register.sqlite ".backup '/backups/register-$(date +%F).sqlite'"
+sqlite3 /var/lib/groupmatters/register.sqlite ".backup '/backups/register-$(date +%F).sqlite'"
 # Docker:
 docker run --rm -v register-data:/data -v "$PWD":/backup alpine \
   sh -c "apk add -q sqlite && sqlite3 /data/register.sqlite \".backup '/backup/register-$(date +%F).sqlite'\""

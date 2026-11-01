@@ -113,7 +113,7 @@ const WIDGETS = [
   {
     id: "tools",
     title: "Top tools used",
-    why: "Which tools the group's processes run on",
+    why: "Which tools the group's matters run on",
     cols: 2,
     build: (d, ctx) => {
       const top = d.tools.slice(0, 5);
@@ -125,7 +125,7 @@ const WIDGETS = [
         null,
         rows.length ? barRows(rows) : empty("No matters yet."),
         d.tools.length > 5 ? h("p", { class: "muted small" }, `…and ${plural(d.tools.length - 5, "more tool")}. `, h("a", { href: "#/tools" }, "All tools")) : null,
-        d.totals.questions ? h("p", { class: "muted small" }, `${pct}% of matters are linked to a process.`) : null,
+        d.totals.questions ? h("p", { class: "muted small" }, `${pct}% of matters have an attached link.`) : null,
         d.unused_tools.length ? h("p", { class: "muted small" }, "On the list, never used: ", d.unused_tools.map((t) => t.name).join(", "), ".") : null,
       );
     },

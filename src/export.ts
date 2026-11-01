@@ -4,7 +4,7 @@ import type { Space } from "./types.ts";
 import * as repo from "./repo.ts";
 import { withFields } from "./fields.ts";
 
-export const EXPORT_FORMAT = "question-register/v5";
+export const EXPORT_FORMAT = "groupmatters/v5";
 
 export function exportSpace(ctx: Ctx, space: Space) {
   const fresh = repo.getSpace(ctx.db, space.id)!;

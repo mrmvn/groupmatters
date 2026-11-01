@@ -35,7 +35,7 @@ function check(status: number, what: string) {
   throw new AdapterError(`Polis returned HTTP ${status}`);
 }
 
-const headers = { Accept: "application/json", "User-Agent": "question-register" };
+const headers = { Accept: "application/json", "User-Agent": "groupmatters" };
 
 export const polis: Adapter = {
   id: "polis",

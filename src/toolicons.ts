@@ -94,7 +94,7 @@ export function sniffImage(b: Buffer): string | undefined {
 async function fetchImage(ctx: Ctx, url: string): Promise<string | undefined> {
   try {
     const res = await safeFetch(ctx, url, {
-      headers: { Accept: "image/svg+xml,image/png,image/x-icon,image/*;q=0.8", "User-Agent": "question-register (tool icon)" },
+      headers: { Accept: "image/svg+xml,image/png,image/x-icon,image/*;q=0.8", "User-Agent": "groupmatters (tool icon)" },
       timeoutMs: TIMEOUT_MS,
       maxBytes: ICON_BYTES,
     });
@@ -116,7 +116,7 @@ export async function fetchSiteIcon(ctx: Ctx, origin: string): Promise<string | 
   let candidates: string[] = [];
   try {
     const res = await safeFetch(ctx, origin + "/", {
-      headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "question-register (tool icon)" },
+      headers: { Accept: "text/html,application/xhtml+xml", "User-Agent": "groupmatters (tool icon)" },
       timeoutMs: TIMEOUT_MS,
       maxBytes: PAGE_BYTES,
       truncate: true,

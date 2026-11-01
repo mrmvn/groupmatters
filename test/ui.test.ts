@@ -111,7 +111,7 @@ test("header: no tabs; the space name opens the items; the menu has Dashboard, T
   btn.click();
   assert.ok(list.hasAttribute("hidden"));
   // The page opens on the bar to add an item.
-  assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or link a matter: a question, a proposal, a poll, a meeting…");
+  assert.equal((document.getElementById("composer-input") as any).getAttribute("placeholder"), "Name or paste any matter: a question, a deliberative process, a proposal, a poll, a forecast…");
   assert.ok(!document.querySelector(".composer-prompt"), "no witty line above the bar");
   const how = await go("#/about");
   assert.match(how.textContent!, /The group behind this space/);
@@ -222,7 +222,7 @@ test("rules pages and activity render", async () => {
 test("composer: the witty prompt line is switched off (see prompts.js); the bar's placeholder explains matters", async () => {
   const main = await go("#/list?lane=current");
   assert.ok(!main.querySelector(".composer-prompt"), "no line above the add bar");
-  assert.match((document.getElementById("composer-input") as any).getAttribute("placeholder"), /^Name or link a matter/);
+  assert.match((document.getElementById("composer-input") as any).getAttribute("placeholder"), /^Name (a matter or paste a link|or paste any matter)/);
 });
 
 test("flow: type a question in the composer and add it", async () => {
