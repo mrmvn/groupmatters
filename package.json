@@ -1,6 +1,6 @@
 {
   "name": "groupmatters",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Keep track of your group's matters, and link them to where they're worked on.",
   "private": true,
   "type": "module",
